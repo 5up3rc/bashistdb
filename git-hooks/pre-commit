@@ -1,0 +1,24 @@
+#!/bin/sh
+# To use, store as .git/hooks/pre-commit inside your repository and make sure
+# it has execute permissions.
+#
+# This script does not handle file names that contain spaces.
+
+# To install, on your top directory:
+# ln -s ../../git-hooks/pre-commit .git/hooks/pre-commit
+
+HASH="$(git rev-parse --short HEAD)"
+COMMITS="$(git rev-list HEAD --count bashistdb.go)"
+sed 's/version = .*/version = "'"$COMMITS"'.'"$HASH"'+"/' -i version.go
+git add version.go
+
+gofiles=$(git diff --cached --name-only --diff-filter=ACM | grep '.go$')
+[ -z "$gofiles" ] && exit 0
+
+unformatted=$(gofmt -l $gofiles)
+[ -z "$unformatted" ] || for fn in $unformatted; do
+    echo "Gofmt-ing $PWD/$fn"
+    gofmt -w $PWD/$fn
+    git add $PWD/$gofiles
+done
+

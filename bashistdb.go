@@ -8,6 +8,8 @@ import (
 	"bufio"
 	"database/sql"
 	"flag"
+
+	"fmt"
 	"github.com/mattn/go-sqlite3"
 	"io"
 	"log"
@@ -17,7 +19,8 @@ import (
 )
 
 var (
-	dbFile = flag.String("db", "database.sqlite", "path to database file (will be created if not exists)")
+	dbFile       = flag.String("db", "database.sqlite", "path to database file (will be created if not exists)")
+	printVersion = flag.Bool("v", false, "print version and exit")
 )
 
 var (
@@ -49,11 +52,11 @@ func submitRecord(user, host, command string) error {
 func main() {
 	flag.Parse()
 
-	// if *printVersion {
-	// 	fmt.Println("Quickcert v" + version)
-	// 	fmt.Println("https://github.com/andmarios/quickcert")
-	// 	os.Exit(0)
-	// }
+	if *printVersion {
+		fmt.Println("bashistdb v" + version)
+		fmt.Println("https://github.com/andmarios/bashistdb")
+		os.Exit(0)
+	}
 
 	// If database file does not exist, set a flag to create file and table.
 	initDB := false
