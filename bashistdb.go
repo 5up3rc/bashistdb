@@ -21,6 +21,7 @@ import (
 var (
 	dbFile       = flag.String("db", "database.sqlite", "path to database file (will be created if not exists)")
 	printVersion = flag.Bool("v", false, "print version and exit")
+	silent       = flag.Bool("s", false, "silent, do not log info to stderr")
 )
 
 var (
@@ -39,6 +40,12 @@ func submitRecord(user, host, command string) error {
 	return nil
 }
 
+func clog(s string) {
+	if !*silent {
+		log.Println(s)
+	}
+}
+
 func main() {
 	flag.Parse()
 
@@ -51,10 +58,10 @@ func main() {
 	// If database file does not exist, set a flag to create file and table.
 	initDB := false
 	if _, err := os.Stat(*dbFile); os.IsNotExist(err) {
-		log.Println("Database file not found. Creating new.")
+		clog("Database file not found. Creating new.")
 		initDB = true
 	} else {
-		log.Println("Database file found.")
+		clog("Database file found.")
 	}
 	// Open database
 	var err error // If we do not do this and use := below, db becomes local variable in main()
@@ -106,7 +113,7 @@ func main() {
 		historyLine, err := stdinReader.ReadString('\n')
 		if err != nil {
 			if err == io.EOF {
-				log.Println("Exiting. Bye")
+				clog("Exiting. Bye")
 				break
 			} else {
 				log.Fatalf("Error reading from stdin: %s\n", err)
@@ -120,15 +127,15 @@ func main() {
 	}
 
 	tx.Commit()
-	rows, err := db.Query("SELECT command, count(*) as count FROM history GROUP BY command ORDER BY count DESC LIMIT 30")
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var command string
-		var count int
-		rows.Scan(&command, &count)
-		log.Print(count, " ", command)
-	}
+	// rows, err := db.Query("SELECT command, count(*) as count FROM history GROUP BY command ORDER BY datetime DESC LIMIT 3")
+	// if err != nil {
+	// 	log.Fatal(err)
+	// }
+	// defer rows.Close()
+	// for rows.Next() {
+	// 	var command string
+	// 	var count int
+	// 	rows.Scan(&command, &count)
+	// 	log.Print(count, " ", command)
+	// }
 }
