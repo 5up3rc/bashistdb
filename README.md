@@ -13,7 +13,7 @@ This will insert your bash_history into `database.sqlite` and show the 30 most f
 
 Then you probably want to add it to your PROMPT_COMMAND (PS1):
 
-    $ export PROMPT_COMMAND="${PROMPT_COMMAND};"'echo USER HOST $(history 1) | bashistdb -s'
+    $ xport PROMPT_COMMAND="${PROMPT_COMMAND};"'echo USER HOST $(history 1 | sed "s/^[0-9]* *//")| ./bashistdb -s'
 
 It is still incomplete.
 
