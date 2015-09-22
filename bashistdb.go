@@ -108,24 +108,26 @@ func main() {
 	defer insertStmt.Close()
 
 	stdinReader := bufio.NewReader(os.Stdin)
-	parseLine := regexp.MustCompile("([a-zA-Z0-9-]+) ([a-zA-Z0-9-]+) (.*)")
-	for {
-		historyLine, err := stdinReader.ReadString('\n')
-		if err != nil {
-			if err == io.EOF {
-				clog("Exiting. Bye")
-				break
-			} else {
-				log.Fatalf("Error reading from stdin: %s\n", err)
+	stats, _ := os.Stdin.Stat()
+	if (stats.Mode() & os.ModeCharDevice) != os.ModeCharDevice {
+		parseLine := regexp.MustCompile("([a-zA-Z0-9-]+) ([a-zA-Z0-9-]+) (.*)")
+		for {
+			historyLine, err := stdinReader.ReadString('\n')
+			if err != nil {
+				if err == io.EOF {
+					clog("Exiting. Bye")
+					break
+				} else {
+					log.Fatalf("Error reading from stdin: %s\n", err)
+				}
+			}
+			args := parseLine.FindStringSubmatch(historyLine)
+			err = submitRecord(args[0], args[1], strings.TrimSuffix(args[3], "\n"))
+			if err != nil {
+				log.Fatalln("Error executing database statement:", err)
 			}
 		}
-		args := parseLine.FindStringSubmatch(historyLine)
-		err = submitRecord(args[0], args[1], strings.TrimSuffix(args[3], "\n"))
-		if err != nil {
-			log.Fatalln("Error executing database statement:", err)
-		}
 	}
-
 	tx.Commit()
 	// rows, err := db.Query("SELECT command, count(*) as count FROM history GROUP BY command ORDER BY datetime DESC LIMIT 3")
 	// if err != nil {
