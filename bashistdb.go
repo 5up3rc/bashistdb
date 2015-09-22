@@ -127,17 +127,19 @@ func main() {
 				log.Fatalln("Error executing database statement:", err)
 			}
 		}
+	} else { // Print some stats
+		tx.Commit()
+		fmt.Println("Top-20 commands:")
+		rows, err := db.Query("SELECT command, count(*) as count FROM history GROUP BY command ORDER BY count DESC LIMIT 20")
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var command string
+			var count int
+			rows.Scan(&command, &count)
+			fmt.Printf("%d: %s\n", count, command)
+		}
 	}
-	tx.Commit()
-	// rows, err := db.Query("SELECT command, count(*) as count FROM history GROUP BY command ORDER BY datetime DESC LIMIT 3")
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
-	// defer rows.Close()
-	// for rows.Next() {
-	// 	var command string
-	// 	var count int
-	// 	rows.Scan(&command, &count)
-	// 	log.Print(count, " ", command)
-	// }
 }
