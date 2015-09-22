@@ -8,12 +8,12 @@ import (
 	"bufio"
 	"database/sql"
 	"flag"
-
 	"fmt"
-	"github.com/mattn/go-sqlite3"
+	_ "github.com/mattn/go-sqlite3"
 	"io"
 	"log"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -32,19 +32,9 @@ var (
 // if the record already exists, it updates the count
 func submitRecord(user, host, command string) error {
 	// Try to insert row
-	_, err := insertStmt.Exec(user, host, command, 1)
+	_, err := insertStmt.Exec(user, host, command, time.Now())
 	if err != nil {
-		// If failed due to duplicate primary key, then increase count
-		if driverErr, ok := err.(sqlite3.Error); ok {
-			if driverErr.ExtendedCode == sqlite3.ErrConstraintPrimaryKey {
-				_, err = updateStmt.Exec(user, host, command)
-				if err != nil {
-					return err
-				}
-			} else {
-				return err
-			}
-		}
+		return err
 	}
 	return nil
 }
@@ -79,8 +69,8 @@ func main() {
                                 user TEXT,
                                 host TEXT,
                                 command TEXT,
-                                count INT,
-                                PRIMARY KEY (user, host, command)
+                                datetime DATETIME,
+                                PRIMARY KEY (command, datetime)
                              );`
 		_, err := db.Exec(sqlStmt)
 		if err != nil {
@@ -104,21 +94,14 @@ func main() {
 		}
 	}()
 	// Prepare statement for inserting into database new entries
-	insertStmt, err = tx.Prepare("INSERT INTO history(user, host, command, count) values(?, ?, ?, ?)")
+	insertStmt, err = tx.Prepare("INSERT INTO history(user, host, command, datetime) values(?, ?, ?, ?)")
 	if err != nil {
 		log.Fatalln(err)
 	}
 	defer insertStmt.Close()
-	// Prepare statement for updating count in existing entries
-	updateStmt, err = tx.Prepare(`UPDATE history SET count = count + 1
-                                      WHERE user=? AND host=? AND command=?`)
-	if err != nil {
-		log.Fatalln(err)
-	}
-	defer updateStmt.Close()
 
 	stdinReader := bufio.NewReader(os.Stdin)
-
+	parseLine := regexp.MustCompile("([a-zA-Z0-9-]+) ([a-zA-Z0-9-]+) (.*)")
 	for {
 		historyLine, err := stdinReader.ReadString('\n')
 		if err != nil {
@@ -129,14 +112,15 @@ func main() {
 				log.Fatalf("Error reading from stdin: %s\n", err)
 			}
 		}
-		err = submitRecord("mrsaccess", "miles-kitt", strings.TrimSuffix(historyLine, "\n"))
+		args := parseLine.FindStringSubmatch(historyLine)
+		err = submitRecord(args[0], args[1], strings.TrimSuffix(args[3], "\n"))
 		if err != nil {
 			log.Fatalln("Error executing database statement:", err)
 		}
 	}
 
 	tx.Commit()
-	rows, err := db.Query("SELECT command, count FROM history ORDER BY count DESC LIMIT 30")
+	rows, err := db.Query("SELECT command, count(*) as count FROM history GROUP BY command ORDER BY count DESC LIMIT 30")
 	if err != nil {
 		log.Fatal(err)
 	}
