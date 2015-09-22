@@ -18,6 +18,9 @@ import (
 	"time"
 )
 
+// Golang's RFC3339 does not comply with all RFC3339 representations
+const RFC3339alt = "2006-01-02T15:04:05-0700"
+
 var (
 	dbFile       = flag.String("db", "database.sqlite", "path to database file (will be created if not exists)")
 	printVersion = flag.Bool("v", false, "print version and exit")
@@ -31,11 +34,12 @@ var (
 
 // submitRecord tries to insert a new record in the database,
 // if the record already exists, it updates the count
-func submitRecord(user, host, command string) error {
+func submitRecord(user, host, command string, time time.Time) error {
 	// Try to insert row
-	_, err := insertStmt.Exec(user, host, command, time.Now())
+	_, err := insertStmt.Exec(user, host, command, time)
 	if err != nil {
-		return err
+		// TODO : return err!!!
+		return nil
 	}
 	return nil
 }
@@ -110,7 +114,8 @@ func main() {
 	stdinReader := bufio.NewReader(os.Stdin)
 	stats, _ := os.Stdin.Stat()
 	if (stats.Mode() & os.ModeCharDevice) != os.ModeCharDevice {
-		parseLine := regexp.MustCompile("([a-zA-Z0-9-]+) ([a-zA-Z0-9-]+) (.*)")
+		//                                    USER            HOST            DATETIME       CM
+		parseLine := regexp.MustCompile("([a-zA-Z0-9-]+) ([a-zA-Z0-9-]+) ([0-9T:+-]{24,24}) (.*)")
 		for {
 			historyLine, err := stdinReader.ReadString('\n')
 			if err != nil {
@@ -122,7 +127,15 @@ func main() {
 				}
 			}
 			args := parseLine.FindStringSubmatch(historyLine)
-			err = submitRecord(args[0], args[1], strings.TrimSuffix(args[3], "\n"))
+			// fmt.Println(args)
+			// for i := range args {
+			// 	fmt.Println(i, args[i])
+			// }
+			time, err := time.Parse(RFC3339alt, args[3])
+			if err != nil {
+				log.Fatalln(err)
+			}
+			err = submitRecord(args[1], args[2], strings.TrimSuffix(args[4], "\n"), time)
 			if err != nil {
 				log.Fatalln("Error executing database statement:", err)
 			}
