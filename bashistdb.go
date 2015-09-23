@@ -24,10 +24,9 @@ const RFC3339alt = "2006-01-02T15:04:05-0700"
 
 var (
 	dbFile       = flag.String("db", "database.sqlite", "path to database file (will be created if not exists)")
-	printVersion = flag.Bool("v", false, "print version and exit")
-	silentFlag   = flag.Bool("s", true, "silent, do not log info to stderr")
-	debugFlag    = flag.Bool("d", false, "debug: very verbose output")
-	oldInput     = flag.Bool("old-in", false, "accept old input format (USER HOST TIMESTAMP COMMAND)")
+	printVersion = flag.Bool("V", false, "print version and exit")
+	silentFlag   = flag.Bool("q", true, "silent, do not log info to stderr")
+	debugFlag    = flag.Bool("v", false, "very verbose output")
 	user         = flag.String("user", "", "optional user name to use instead of reading $USER variable")
 	hostname     = flag.String("hostname", "", "optional hostname to use instead of reading $HOSTNAME variable")
 )
@@ -166,8 +165,6 @@ func main() {
 	if (stats.Mode() & os.ModeCharDevice) != os.ModeCharDevice {
 		//                                  LINENUM        DATETIME         CM
 		parseLine := regexp.MustCompile(`^ *[0-9]+\*? *([0-9T:+-]{24,24}) *(.*)`)
-		//                                       USER            HOST            DATETIME       CM
-		parseOldLine := regexp.MustCompile("([a-zA-Z0-9-]+) ([a-zA-Z0-9-]+) ([0-9T:+-]{24,24}) (.*)")
 		for {
 			historyLine, err := stdinReader.ReadString('\n')
 			if err != nil {
@@ -178,38 +175,18 @@ func main() {
 					log.Fatalf("Error reading from stdin: %s\n", err)
 				}
 			}
-			if !*oldInput {
-				args := parseLine.FindStringSubmatch(historyLine)
-				if len(args) != 3 {
-					info.Println("Could't decode line. Skipping:", historyLine)
-					continue
-				}
-				time, err := time.Parse(RFC3339alt, args[1])
-				if err != nil {
-					log.Fatalln(err)
-				}
-				err = submitRecord(*user, *hostname, strings.TrimSuffix(args[2], "\n"), time)
-				if err != nil {
-					log.Fatalln("Error executing database statement:", err)
-				}
-			} else {
-				args := parseOldLine.FindStringSubmatch(historyLine)
-				if len(args) != 5 {
-					info.Println("Could't decode line. Skipping:", historyLine)
-					continue
-				}
-				// fmt.Println(args)
-				// for i := range args {
-				// 	fmt.Println(i, args[i])
-				// }
-				time, err := time.Parse(RFC3339alt, args[3])
-				if err != nil {
-					log.Fatalln(err)
-				}
-				err = submitRecord(args[1], args[2], strings.TrimSuffix(args[4], "\n"), time)
-				if err != nil {
-					log.Fatalln("Error executing database statement:", err)
-				}
+			args := parseLine.FindStringSubmatch(historyLine)
+			if len(args) != 3 {
+				info.Println("Could't decode line. Skipping:", historyLine)
+				continue
+			}
+			time, err := time.Parse(RFC3339alt, args[1])
+			if err != nil {
+				log.Fatalln(err)
+			}
+			err = submitRecord(*user, *hostname, strings.TrimSuffix(args[2], "\n"), time)
+			if err != nil {
+				log.Fatalln("Error executing database statement:", err)
 			}
 		}
 	} else { // Print some stats

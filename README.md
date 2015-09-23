@@ -10,7 +10,7 @@ An example to get you going. First enable timestamping on bash history:
     $ export HISTTIMEFORMAT="%FT%T%z "
     $ echo 'HISTTIMEFORMAT="%FT%T%z "' >> ~/.bash_rc
 
-Now load old entries¹²³:
+Now load old entries¹²:
 
     $ history | go run bashistdb.go version.go
 
@@ -27,6 +27,3 @@ I wrote this project to learn a bit about golang and SQL.
 
 1: Old entries without timestamp will use a common timestamp, thus duplicates will not be inserted.
 2: If an old entry spans across lines (very rare), you will have a segfault.
-3: There is an old format option (USER HOST TIMESTAMP COMMAND) that you may use like:
-
-    $ history | sed -r 's/^ *([0-9]+)\*? *(.*)/USER HOST \2/' | go run bashistdb.go version.go
