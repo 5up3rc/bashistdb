@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"github.com/mattn/go-sqlite3"
 	"io"
+	"io/ioutil"
 	"log"
 	"os"
 	"regexp"
@@ -24,12 +25,21 @@ const RFC3339alt = "2006-01-02T15:04:05-0700"
 var (
 	dbFile       = flag.String("db", "database.sqlite", "path to database file (will be created if not exists)")
 	printVersion = flag.Bool("v", false, "print version and exit")
-	silent       = flag.Bool("s", true, "silent, do not log info to stderr")
+	silentFlag   = flag.Bool("s", true, "silent, do not log info to stderr")
+	debugFlag    = flag.Bool("d", false, "debug: very verbose output")
+	oldInput     = flag.Bool("old-in", false, "accept old input format (USER HOST TIMESTAMP COMMAND)")
+	user         = flag.String("user", "", "optional user name to use instead of reading $USER variable")
+	hostname     = flag.String("hostname", "", "optional hostname to use instead of reading $HOSTNAME variable")
 )
 
 var (
 	db                     *sql.DB
 	insertStmt, updateStmt *sql.Stmt
+)
+
+var (
+	info  *log.Logger
+	debug *log.Logger
 )
 
 // submitRecord tries to insert a new record in the database,
@@ -42,7 +52,9 @@ func submitRecord(user, host, command string, time time.Time) error {
 		// We expect for ease of use, the user to resubmit the whole
 		// history from time to time.
 		if driverErr, ok := err.(sqlite3.Error); ok {
-			if driverErr.ExtendedCode != sqlite3.ErrConstraintPrimaryKey {
+			if driverErr.ExtendedCode == sqlite3.ErrConstraintPrimaryKey {
+				debug.Println("Duplicate entry. Ignoring.", user, host, command, time)
+			} else {
 				return err
 			}
 		} else { // Normally we can never reach this. Should we omit it?
@@ -52,15 +64,45 @@ func submitRecord(user, host, command string, time time.Time) error {
 	return nil
 }
 
-func clog(s string) {
-	if !*silent {
-		log.Println(s)
+func init() {
+	// Read flags and set user and hostname if not provided.
+	flag.Parse()
+
+	if *user == "" {
+		*user = os.Getenv("USER")
 	}
+	if *user == "" {
+		log.Fatalln("Couldn't read username from $USER system variable and none was provided by -user flag.")
+	}
+
+	var err error
+	if *hostname == "" {
+		*hostname, err = os.Hostname()
+		if err != nil {
+			log.Fatalln("Couldn't read hostname from $HOSTNAME system variable and none was provided by -hostname flag:", err)
+		}
+	}
+
+	// Set loggers
+	if *debugFlag {
+		*silentFlag = false
+	}
+	if *debugFlag {
+		debug = log.New(os.Stderr, "", log.Ldate|log.Ltime|log.Lshortfile)
+		debug.Println("Debug enabled.")
+	} else {
+		debug = log.New(ioutil.Discard, "", 0)
+	}
+	if !*silentFlag {
+		info = log.New(os.Stderr, "", log.Ldate|log.Ltime|log.Lshortfile)
+	} else {
+		info = log.New(ioutil.Discard, "", 0)
+	}
+
+	info.Println("Welcome " + *user + "@" + *hostname + ".")
 }
 
 func main() {
-	flag.Parse()
-
 	if *printVersion {
 		fmt.Println("bashistdb v" + version)
 		fmt.Println("https://github.com/andmarios/bashistdb")
@@ -70,10 +112,10 @@ func main() {
 	// If database file does not exist, set a flag to create file and table.
 	initDB := false
 	if _, err := os.Stat(*dbFile); os.IsNotExist(err) {
-		clog("Database file not found. Creating new.")
+		info.Println("Database file not found. Creating new.")
 		initDB = true
 	} else {
-		clog("Database file found.")
+		info.Println("Database file found.")
 	}
 	// Open database
 	var err error // If we do not do this and use := below, db becomes local variable in main()
@@ -122,36 +164,58 @@ func main() {
 	stdinReader := bufio.NewReader(os.Stdin)
 	stats, _ := os.Stdin.Stat()
 	if (stats.Mode() & os.ModeCharDevice) != os.ModeCharDevice {
-		//                                    USER            HOST            DATETIME       CM
-		parseLine := regexp.MustCompile("([a-zA-Z0-9-]+) ([a-zA-Z0-9-]+) ([0-9T:+-]{24,24}) (.*)")
+		//                                  LINENUM        DATETIME         CM
+		parseLine := regexp.MustCompile(`^ *[0-9]+\*? *([0-9T:+-]{24,24}) *(.*)`)
+		//                                       USER            HOST            DATETIME       CM
+		parseOldLine := regexp.MustCompile("([a-zA-Z0-9-]+) ([a-zA-Z0-9-]+) ([0-9T:+-]{24,24}) (.*)")
 		for {
 			historyLine, err := stdinReader.ReadString('\n')
 			if err != nil {
 				if err == io.EOF {
-					clog("Exiting. Bye")
+					info.Println("Exiting. Bye")
 					break
 				} else {
 					log.Fatalf("Error reading from stdin: %s\n", err)
 				}
 			}
-			args := parseLine.FindStringSubmatch(historyLine)
-			// fmt.Println(args)
-			// for i := range args {
-			// 	fmt.Println(i, args[i])
-			// }
-			time, err := time.Parse(RFC3339alt, args[3])
-			if err != nil {
-				log.Fatalln(err)
-			}
-			err = submitRecord(args[1], args[2], strings.TrimSuffix(args[4], "\n"), time)
-			if err != nil {
-				log.Fatalln("Error executing database statement:", err)
+			if !*oldInput {
+				args := parseLine.FindStringSubmatch(historyLine)
+				if len(args) != 3 {
+					info.Println("Could't decode line. Skipping:", historyLine)
+					continue
+				}
+				time, err := time.Parse(RFC3339alt, args[1])
+				if err != nil {
+					log.Fatalln(err)
+				}
+				err = submitRecord(*user, *hostname, strings.TrimSuffix(args[2], "\n"), time)
+				if err != nil {
+					log.Fatalln("Error executing database statement:", err)
+				}
+			} else {
+				args := parseOldLine.FindStringSubmatch(historyLine)
+				if len(args) != 5 {
+					info.Println("Could't decode line. Skipping:", historyLine)
+					continue
+				}
+				// fmt.Println(args)
+				// for i := range args {
+				// 	fmt.Println(i, args[i])
+				// }
+				time, err := time.Parse(RFC3339alt, args[3])
+				if err != nil {
+					log.Fatalln(err)
+				}
+				err = submitRecord(args[1], args[2], strings.TrimSuffix(args[4], "\n"), time)
+				if err != nil {
+					log.Fatalln("Error executing database statement:", err)
+				}
 			}
 		}
 	} else { // Print some stats
 		tx.Commit()
-		fmt.Println("Top-20 commands:")
-		rows, err := db.Query("SELECT command, count(*) as count FROM history GROUP BY command ORDER BY count DESC LIMIT 20")
+		fmt.Println("Top-30 commands:")
+		rows, err := db.Query("SELECT command, count(*) as count FROM history GROUP BY command ORDER BY count DESC LIMIT 30")
 		if err != nil {
 			log.Fatal(err)
 		}
