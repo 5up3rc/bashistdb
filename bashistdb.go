@@ -9,7 +9,7 @@ import (
 	"database/sql"
 	"flag"
 	"fmt"
-	_ "github.com/mattn/go-sqlite3"
+	"github.com/mattn/go-sqlite3"
 	"io"
 	"log"
 	"os"
@@ -24,7 +24,7 @@ const RFC3339alt = "2006-01-02T15:04:05-0700"
 var (
 	dbFile       = flag.String("db", "database.sqlite", "path to database file (will be created if not exists)")
 	printVersion = flag.Bool("v", false, "print version and exit")
-	silent       = flag.Bool("s", false, "silent, do not log info to stderr")
+	silent       = flag.Bool("s", true, "silent, do not log info to stderr")
 )
 
 var (
@@ -38,8 +38,16 @@ func submitRecord(user, host, command string, time time.Time) error {
 	// Try to insert row
 	_, err := insertStmt.Exec(user, host, command, time)
 	if err != nil {
-		// TODO : return err!!!
-		return nil
+		// If failed due to duplicate primary key, then ignore error
+		// We expect for ease of use, the user to resubmit the whole
+		// history from time to time.
+		if driverErr, ok := err.(sqlite3.Error); ok {
+			if driverErr.ExtendedCode != sqlite3.ErrConstraintPrimaryKey {
+				return err
+			}
+		} else { // Normally we can never reach this. Should we omit it?
+			return err
+		}
 	}
 	return nil
 }
