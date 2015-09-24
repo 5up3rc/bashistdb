@@ -9,14 +9,12 @@ import (
 	"database/sql"
 	"flag"
 	"fmt"
-	"github.com/mattn/go-sqlite3"
-	"io"
 	"io/ioutil"
 	"log"
 	"os"
-	"regexp"
-	"strings"
 	"time"
+
+	"github.com/mattn/go-sqlite3"
 )
 
 // Golang's RFC3339 does not comply with all RFC3339 representations
@@ -30,6 +28,7 @@ var (
 	debugFlag    = flag.Bool("v", false, "very verbose output")
 	user         = flag.String("user", "", "optional user name to use instead of reading $USER variable")
 	hostname     = flag.String("hostname", "", "optional hostname to use instead of reading $HOSTNAME variable")
+	queryString  = flag.String("query", "", "SQL query to run")
 )
 
 var (
@@ -107,15 +106,15 @@ func init() {
 	}
 
 	info.Println("Welcome " + *user + "@" + *hostname + ".")
-}
 
-func main() {
 	if *printVersion {
 		fmt.Println("bashistdb v" + version)
 		fmt.Println("https://github.com/andmarios/bashistdb")
 		os.Exit(0)
 	}
+}
 
+func loadDatabase() error {
 	// If database file does not exist, set a flag to create file and table.
 	initDB := false
 	if _, err := os.Stat(*dbFile); os.IsNotExist(err) {
@@ -129,9 +128,8 @@ func main() {
 	var err error // If we do not do this and use := below, db becomes local variable in main()
 	db, err = sql.Open("sqlite3", *dbFile)
 	if err != nil {
-		log.Fatalf("Could not open database file: %s\n", err)
+		return err
 	}
-	defer db.Close()
 
 	// Create table if new database
 	if initDB {
@@ -144,9 +142,19 @@ func main() {
                              );`
 		_, err := db.Exec(sqlStmt)
 		if err != nil {
-			log.Fatalf("Error creating table. %q: %s\n", err, sqlStmt)
+			return err
 		}
 	}
+	return nil
+}
+
+func main() {
+	// Load database
+	err := loadDatabase()
+	if err != nil {
+		log.Fatalln("Failed to load database:", err)
+	}
+	defer db.Close()
 
 	// Create a database tx
 	tx, err := db.Begin()
@@ -163,6 +171,7 @@ func main() {
 			tx.Commit()
 		}
 	}()
+
 	// Prepare statement for inserting into database new entries
 	insertStmt, err = tx.Prepare("INSERT INTO history(user, host, command, datetime) values(?, ?, ?, ?)")
 	if err != nil {
@@ -173,34 +182,12 @@ func main() {
 	stdinReader := bufio.NewReader(os.Stdin)
 	stats, _ := os.Stdin.Stat()
 	if (stats.Mode() & os.ModeCharDevice) != os.ModeCharDevice {
-		//                                  LINENUM        DATETIME         CM
-		parseLine := regexp.MustCompile(`^ *[0-9]+\*? *([0-9T:+-]{24,24}) *(.*)`)
-		for {
-			historyLine, err := stdinReader.ReadString('\n')
-			if err != nil {
-				if err == io.EOF {
-					info.Println("Exiting. Bye")
-					break
-				} else {
-					log.Fatalf("Error reading from stdin: %s\n", err)
-				}
-			}
-			args := parseLine.FindStringSubmatch(historyLine)
-			if len(args) != 3 {
-				info.Println("Could't decode line. Skipping:", historyLine)
-				continue
-			}
-			time, err := time.Parse(RFC3339alt, args[1])
-			if err != nil {
-				log.Fatalln(err)
-			}
-			err = submitRecord(*user, *hostname, strings.TrimSuffix(args[2], "\n"), time)
-			if err != nil {
-				log.Fatalln("Error executing database statement:", err)
-			}
+		err = readFromStdin(stdinReader)
+		if err != nil {
+			log.Fatalln("Error while processing stdin:", err)
 		}
 		info.Printf("Processed %d entries, successful %d, failed %d.\n", total, total-failed, failed)
-	} else { // Print some stats
+	} else if *queryString == "" { // Print some stats
 		tx.Commit()
 		fmt.Println("Top-20 commands:")
 		rows, err := db.Query("SELECT command, count(*) as count FROM history GROUP BY command ORDER BY count DESC LIMIT 20")
@@ -226,6 +213,19 @@ func main() {
 			var time time.Time
 			rows.Scan(&time, &command)
 			fmt.Printf("%s %s\n", time, command)
+		}
+	} else {
+		tx.Commit()
+		fmt.Println("Results:")
+		rows, err := db.Query("SELECT command FROM history " + *queryString)
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var command string
+			rows.Scan(&command)
+			fmt.Printf("%s\n", command)
 		}
 	}
 }
