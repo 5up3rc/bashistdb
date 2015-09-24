@@ -42,6 +42,11 @@ var (
 	debug *log.Logger
 )
 
+var (
+	total  = 0
+	failed = 0
+)
+
 // submitRecord tries to insert a new record in the database,
 // if the record already exists, it updates the count
 func submitRecord(user, host, command string, time time.Time) error {
@@ -54,6 +59,7 @@ func submitRecord(user, host, command string, time time.Time) error {
 		if driverErr, ok := err.(sqlite3.Error); ok {
 			if driverErr.ExtendedCode == sqlite3.ErrConstraintPrimaryKey {
 				debug.Println("Duplicate entry. Ignoring.", user, host, command, time)
+				failed++
 			} else {
 				return err
 			}
@@ -61,6 +67,7 @@ func submitRecord(user, host, command string, time time.Time) error {
 			return err
 		}
 	}
+	total++
 	return nil
 }
 
@@ -192,10 +199,11 @@ func main() {
 				log.Fatalln("Error executing database statement:", err)
 			}
 		}
+		info.Printf("Processed %d entries, successful %d, failed %d.\n", total, total-failed, failed)
 	} else { // Print some stats
 		tx.Commit()
-		fmt.Println("Top-30 commands:")
-		rows, err := db.Query("SELECT command, count(*) as count FROM history GROUP BY command ORDER BY count DESC LIMIT 30")
+		fmt.Println("Top-20 commands:")
+		rows, err := db.Query("SELECT command, count(*) as count FROM history GROUP BY command ORDER BY count DESC LIMIT 20")
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -205,6 +213,19 @@ func main() {
 			var count int
 			rows.Scan(&command, &count)
 			fmt.Printf("%d: %s\n", count, command)
+		}
+		fmt.Println("=================")
+		fmt.Println("Last 10 commands:")
+		rows, err = db.Query("SELECT  datetime, command FROM history ORDER BY datetime DESC LIMIT 10")
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var command string
+			var time time.Time
+			rows.Scan(&time, &command)
+			fmt.Printf("%s %s\n", time, command)
 		}
 	}
 }
