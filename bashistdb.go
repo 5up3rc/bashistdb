@@ -23,9 +23,10 @@ import (
 const RFC3339alt = "2006-01-02T15:04:05-0700"
 
 var (
-	dbFile       = flag.String("db", "database.sqlite", "path to database file (will be created if not exists)")
+	dbDefault    = os.Getenv("HOME") + "/.bashistdb.sqlite3"
+	dbFile       = flag.String("db", dbDefault, "path to database file (will be created if not exists)")
 	printVersion = flag.Bool("V", false, "print version and exit")
-	silentFlag   = flag.Bool("q", true, "silent, do not log info to stderr")
+	quietFlag    = flag.Bool("q", true, "quiet, do not log info to stderr")
 	debugFlag    = flag.Bool("v", false, "very verbose output")
 	user         = flag.String("user", "", "optional user name to use instead of reading $USER variable")
 	hostname     = flag.String("hostname", "", "optional hostname to use instead of reading $HOSTNAME variable")
@@ -84,7 +85,7 @@ func init() {
 
 	// Set loggers
 	if *debugFlag {
-		*silentFlag = false
+		*quietFlag = false
 	}
 	if *debugFlag {
 		debug = log.New(os.Stderr, "", log.Ldate|log.Ltime|log.Lshortfile)
@@ -92,7 +93,7 @@ func init() {
 	} else {
 		debug = log.New(ioutil.Discard, "", 0)
 	}
-	if !*silentFlag {
+	if !*quietFlag {
 		info = log.New(os.Stderr, "", log.Ldate|log.Ltime|log.Lshortfile)
 	} else {
 		info = log.New(ioutil.Discard, "", 0)
@@ -117,12 +118,14 @@ func main() {
 		info.Println("Database file found.")
 	}
 	// Open database
+	// SQLite3 provides concurrency in the library level, thus we don't need to implement locking.
 	var err error // If we do not do this and use := below, db becomes local variable in main()
 	db, err = sql.Open("sqlite3", *dbFile)
 	if err != nil {
 		log.Fatalf("Could not open database file: %s\n", err)
 	}
 	defer db.Close()
+
 	// Create table if new database
 	if initDB {
 		sqlStmt := `CREATE TABLE history (
