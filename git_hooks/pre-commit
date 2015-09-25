@@ -5,7 +5,7 @@
 # This script does not handle file names that contain spaces.
 
 # To install, on your top directory:
-# ln -s ../../git-hooks/pre-commit .git/hooks/pre-commit
+# ln -s ../../git_hooks/pre-commit .git/hooks/pre-commit
 
 HASH="$(git rev-parse --short HEAD)"
 COMMITS="$(git rev-list HEAD --count bashistdb.go)"

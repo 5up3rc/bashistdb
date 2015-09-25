@@ -1,16 +1,14 @@
 /*
-  A small utility to add timestamps to an untimestamped bash
-  history file. You may choose the starting date as X months
-  before now. Then the utility will add timestamps at equal
-  intervals for every line in history.
+Command addTimestamp2Hist adds timestamps to an untimestamped
+bash history file. You may choose the starting date as X months
+before now. Then the utility will add timestamps at equal
+intervals for every line in history.
 
-  $ addTimestamp2Hist ~/.bash_history
+    $ addTimestamp2Hist ~/.bash_history
 */
-
 package main
 
 import (
-	_ "bufio"
 	"flag"
 	"fmt"
 	"io/ioutil"
