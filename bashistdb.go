@@ -25,6 +25,7 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
+	"net"
 	"os"
 
 	"projects.30ohm.com/mrsaccess/bashistdb/database"
@@ -43,6 +44,8 @@ var (
 	user         = flag.String("user", "", "optional user name to use instead of reading $USER variable")
 	hostname     = flag.String("hostname", "", "optional hostname to use instead of reading $HOSTNAME variable")
 	queryString  = flag.String("query", "", "SQL query to run")
+	serverMode   = flag.String("s", "", "server mode")
+	clientMode   = flag.String("r", "", "remote client mode")
 )
 
 var (
@@ -97,7 +100,23 @@ func main() {
 
 	stdinReader := bufio.NewReader(os.Stdin)
 	stats, _ := os.Stdin.Stat()
-	if (stats.Mode() & os.ModeCharDevice) != os.ModeCharDevice {
+
+	if *serverMode != "" {
+		psock, err := net.Listen("tcp", ":5000")
+		if err != nil {
+			log.Fatalln(err)
+		}
+		for {
+			conn, err := psock.Accept()
+			if err != nil {
+				log.Fatalln(err)
+			}
+			go remoteClient(conn)
+
+		}
+	} else if *clientMode != "" {
+		log.Println("client   mode")
+	} else if (stats.Mode() & os.ModeCharDevice) != os.ModeCharDevice {
 		err = db.AddFromBuffer(stdinReader, *user, *hostname)
 		if err != nil {
 			log.Fatalln("Error while processing stdin:", err)
@@ -115,4 +134,9 @@ func main() {
 		}
 		fmt.Println(res)
 	}
+}
+
+func remoteClient(conn net.Conn) {
+	db.AddFromBuffer(bufio.NewReader(conn), *user, *hostname)
+	conn.Close()
 }

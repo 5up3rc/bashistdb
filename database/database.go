@@ -113,11 +113,6 @@ func (d Database) Close() error {
 	return d.db.Close()
 }
 
-var (
-	total  = 0
-	failed = 0
-)
-
 // AddRecord tries to insert a new record in the database,
 // if the record already exists, it updates the count
 func (d Database) AddRecord(user, host, command string, time time.Time) error {
@@ -130,7 +125,6 @@ func (d Database) AddRecord(user, host, command string, time time.Time) error {
 		if driverErr, ok := err.(sqlite3.Error); ok {
 			if driverErr.ExtendedCode == sqlite3.ErrConstraintPrimaryKey {
 				d.l.Debug.Println("Duplicate entry. Ignoring.", user, host, command, time)
-				failed++
 			} else {
 				return err
 			}
@@ -138,7 +132,6 @@ func (d Database) AddRecord(user, host, command string, time time.Time) error {
 			return err
 		}
 	}
-	total++
 	return nil
 }
 
@@ -151,9 +144,10 @@ func (d Database) AddFromBuffer(r *bufio.Reader, user, host string) error {
 	total, failed := 0, 0
 	for {
 		historyLine, err := r.ReadString('\n')
+		total++
 		if err != nil {
 			if err == io.EOF {
-				break
+				goto ADDFROMBUFFEREND
 			} else {
 				return err
 			}
@@ -187,8 +181,8 @@ func (d Database) AddFromBuffer(r *bufio.Reader, user, host string) error {
 				return err
 			}
 		}
-		total++
 	}
+ADDFROMBUFFEREND:
 	tx.Commit()
 	d.l.Info.Printf("Processed %d entries, successful %d, failed %d.\n", total, total-failed, failed)
 	return nil
