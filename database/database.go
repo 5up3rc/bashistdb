@@ -24,6 +24,7 @@ package database
 import (
 	"bufio"
 	"database/sql"
+	"fmt"
 	"io"
 	"os"
 	"regexp"
@@ -147,11 +148,12 @@ func (d Database) AddFromBuffer(r *bufio.Reader, user, host string) error {
 	tx, _ := d.db.Begin()
 	stmt := tx.Stmt(d.insert)
 
+	total, failed := 0, 0
 	for {
 		historyLine, err := r.ReadString('\n')
 		if err != nil {
 			if err == io.EOF {
-				return nil
+				break
 			} else {
 				return err
 			}
@@ -159,10 +161,12 @@ func (d Database) AddFromBuffer(r *bufio.Reader, user, host string) error {
 		args := parseLine.FindStringSubmatch(historyLine)
 		if len(args) != 3 {
 			d.l.Info.Println("Could't decode line. Skipping:", historyLine)
+			failed++
 			continue
 		}
 		time, err := time.Parse(RFC3339alt, args[1])
 		if err != nil {
+			tx.Rollback()
 			return err
 		}
 
@@ -176,6 +180,7 @@ func (d Database) AddFromBuffer(r *bufio.Reader, user, host string) error {
 					d.l.Debug.Println("Duplicate entry. Ignoring.", user, host, strings.TrimSuffix(args[2], "\n"), time)
 					failed++
 				} else {
+					tx.Rollback()
 					return err
 				}
 			} else { // Normally we can never reach this. Should we omit it?
@@ -185,7 +190,40 @@ func (d Database) AddFromBuffer(r *bufio.Reader, user, host string) error {
 		total++
 	}
 	tx.Commit()
+	d.l.Info.Printf("Processed %d entries, successful %d, failed %d.\n", total, total-failed, failed)
 	return nil
+}
+
+func (d Database) Top20() (result string, e error) {
+	result = fmt.Sprintln("Top-20 commands:")
+	rows, e := d.db.Query("SELECT command, count(*) as count FROM history GROUP BY command ORDER BY count DESC LIMIT 20")
+	if e != nil {
+		return result, e
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var command string
+		var count int
+		rows.Scan(&command, &count)
+		result += fmt.Sprintf("%d: %s\n", count, command)
+	}
+	return result, e
+}
+
+func (d Database) Last20() (result string, e error) {
+	result = fmt.Sprintln("Last 10 commands:")
+	rows, e := d.db.Query("SELECT  datetime, command FROM history ORDER BY datetime DESC LIMIT 10")
+	if e != nil {
+		return result, nil
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var command string
+		var time time.Time
+		rows.Scan(&time, &command)
+		result += fmt.Sprintf("%s %s\n", time, command)
+	}
+	return result, e
 }
 
 // 	// Create a database tx

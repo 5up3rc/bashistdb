@@ -102,10 +102,17 @@ func main() {
 		if err != nil {
 			log.Fatalln("Error while processing stdin:", err)
 		}
-		log.Info.Printf("Processed %d entries, successful %d, failed %d.\n", total, total-failed, failed)
+
 	} else if *queryString == "" { // Print some stats
-		fmt.Println("Top-20 commands:")
-	} else {
-		fmt.Println("Results:")
+		res, err := db.Top20()
+		if err != nil {
+			log.Fatalln(err)
+		}
+		fmt.Println(res)
+		res, err = db.Last20()
+		if err != nil {
+			log.Fatalln(err)
+		}
+		fmt.Println(res)
 	}
 }
