@@ -23,13 +23,16 @@ package main
 
 import (
 	"bufio"
+	"bytes"
+	"encoding/gob"
 	"flag"
 	"fmt"
 	"io/ioutil"
 	"net"
 	"os"
 
-	"projects.30ohm.com/mrsaccess/bashistdb/code"
+	"github.com/andmarios/crypto/nacl/saltsecret"
+
 	"projects.30ohm.com/mrsaccess/bashistdb/database"
 	"projects.30ohm.com/mrsaccess/bashistdb/llog"
 )
@@ -119,16 +122,27 @@ func main() {
 	} else if *clientMode != "" {
 		if (stats.Mode() & os.ModeCharDevice) != os.ModeCharDevice {
 			conn, err := net.Dial("tcp", *clientMode)
+			if err != nil {
+				log.Fatalln(err)
+			}
+
+			c := saltsecret.New([]byte("password"), true)
 
 			history, err := ioutil.ReadAll(stdinReader)
 			if err != nil {
 				log.Fatalln(err)
 			}
-			_, err = conn.Write(history)
+			// history = append(history, []byte(code.TRANSMISSION_END))
+
+			history, err = c.Encrypt(history)
 			if err != nil {
 				log.Fatalln(err)
 			}
-			fmt.Fprintf(conn, code.TRANSMISSION_END)
+			encoder := gob.NewEncoder(conn)
+			encoder.Encode(history)
+
+			fmt.Printf("Sent hisory.\n")
+			// fmt.Fprintf(conn, code.TRANSMISSION_END)
 
 			reply, _ := bufio.NewReader(conn).ReadString('\n')
 			fmt.Println(reply)
@@ -154,7 +168,19 @@ func main() {
 }
 
 func remoteClient(conn net.Conn) {
-	db.AddFromBuffer(bufio.NewReader(conn), *user, *hostname)
+	// r, err := saltsecret.NewReader(conn, []byte("password"), saltsecret.DECRYPT, false)
+	// history, _ := ioutil.ReadAll(r)
+	decoder := gob.NewDecoder(conn)
+	history := new([]byte)
+	decoder.Decode(history)
+
+	c := saltsecret.New([]byte("password"), true)
+
+	dhistory, err := c.Decrypt(*history)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	db.AddFromBuffer(bufio.NewReader(bytes.NewReader(dhistory)), *user, *hostname)
 	fmt.Fprint(conn, "Everything ok.\n")
 	conn.Close()
 }
