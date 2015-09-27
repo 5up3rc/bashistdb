@@ -25,9 +25,11 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"net"
 	"os"
 
+	"projects.30ohm.com/mrsaccess/bashistdb/code"
 	"projects.30ohm.com/mrsaccess/bashistdb/database"
 	"projects.30ohm.com/mrsaccess/bashistdb/llog"
 )
@@ -111,17 +113,30 @@ func main() {
 			if err != nil {
 				log.Fatalln(err)
 			}
+			log.Info.Printf("Connection from %s.\n", conn.RemoteAddr())
 			go remoteClient(conn)
 
 		}
 	} else if *clientMode != "" {
-		log.Println("client   mode")
+		if (stats.Mode() & os.ModeCharDevice) != os.ModeCharDevice {
+			conn, err := net.Dial("tcp", *clientMode)
+
+			history, err := ioutil.ReadAll(stdinReader)
+			if err != nil {
+				log.Fatalln(err)
+			}
+			fmt.Fprintf(conn, string(history))
+			fmt.Fprintf(conn, code.TRANSMISSION_END+"\n")
+
+			reply, _ := bufio.NewReader(conn).ReadString('\n')
+			fmt.Println(reply)
+			conn.Close()
+		}
 	} else if (stats.Mode() & os.ModeCharDevice) != os.ModeCharDevice {
 		err = db.AddFromBuffer(stdinReader, *user, *hostname)
 		if err != nil {
 			log.Fatalln("Error while processing stdin:", err)
 		}
-
 	} else if *queryString == "" { // Print some stats
 		res, err := db.Top20()
 		if err != nil {
@@ -138,5 +153,6 @@ func main() {
 
 func remoteClient(conn net.Conn) {
 	db.AddFromBuffer(bufio.NewReader(conn), *user, *hostname)
+	fmt.Fprint(conn, "Everything ok.\n")
 	conn.Close()
 }

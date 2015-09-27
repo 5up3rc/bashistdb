@@ -32,6 +32,7 @@ import (
 	"time"
 
 	"github.com/mattn/go-sqlite3"
+	"projects.30ohm.com/mrsaccess/bashistdb/code"
 	"projects.30ohm.com/mrsaccess/bashistdb/llog"
 )
 
@@ -147,10 +148,14 @@ func (d Database) AddFromBuffer(r *bufio.Reader, user, host string) error {
 		total++
 		if err != nil {
 			if err == io.EOF {
-				goto ADDFROMBUFFEREND
+				break
 			} else {
 				return err
 			}
+		}
+		if historyLine == code.TRANSMISSION_END+"\n" {
+			total--
+			break
 		}
 		args := parseLine.FindStringSubmatch(historyLine)
 		if len(args) != 3 {
@@ -182,7 +187,6 @@ func (d Database) AddFromBuffer(r *bufio.Reader, user, host string) error {
 			}
 		}
 	}
-ADDFROMBUFFEREND:
 	tx.Commit()
 	d.l.Info.Printf("Processed %d entries, successful %d, failed %d.\n", total, total-failed, failed)
 	return nil
