@@ -26,6 +26,7 @@ import (
 	"database/sql"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"regexp"
 	"strings"
@@ -40,8 +41,8 @@ import (
 const RFC3339alt = "2006-01-02T15:04:05-0700"
 
 type Database struct {
-	db *sql.DB
-	l  *llog.Logger
+	*sql.DB
+	l *llog.Logger
 	statements
 }
 
@@ -96,6 +97,10 @@ func initDB(db *sql.DB) error {
                     CREATE TABLE admin (
                         key   TEXT PRIMARY KEY,
                         value TEXT
+                     );
+                    CREATE TABLE connlog (
+                        datetime TEXT PRIMARY KEY,
+                        remote   TEXT
                      );`
 
 	if _, err := db.Exec(stmt); err != nil {
@@ -108,10 +113,6 @@ func initDB(db *sql.DB) error {
 		return err
 	}
 	return nil
-}
-
-func (d Database) Close() error {
-	return d.db.Close()
 }
 
 // AddRecord tries to insert a new record in the database,
@@ -139,7 +140,7 @@ func (d Database) AddRecord(user, host, command string, time time.Time) error {
 func (d Database) AddFromBuffer(r *bufio.Reader, user, host string) error {
 	//                                  LINENUM        DATETIME         CM
 	parseLine := regexp.MustCompile(`^ *[0-9]+\*? *([0-9T:+-]{24,24}) *(.*)`)
-	tx, _ := d.db.Begin()
+	tx, _ := d.Begin()
 	stmt := tx.Stmt(d.insert)
 
 	total, failed := 0, 0
@@ -153,8 +154,7 @@ func (d Database) AddFromBuffer(r *bufio.Reader, user, host string) error {
 				return err
 			}
 		}
-		if historyLine == code.TRANSMISSION_END+"\n" {
-			total--
+		if historyLine == code.TRANSMISSION_END {
 			break
 		}
 		args := parseLine.FindStringSubmatch(historyLine)
@@ -169,7 +169,7 @@ func (d Database) AddFromBuffer(r *bufio.Reader, user, host string) error {
 			return err
 		}
 
-		_, err = stmt.Exec(user, host, args[2], time)
+		_, err = stmt.Exec(user, host, strings.TrimSuffix(args[2], "\n"), time)
 		if err != nil {
 			// If failed due to duplicate primary key, then ignore error
 			// We expect for ease of use, the user to resubmit the whole
@@ -188,13 +188,14 @@ func (d Database) AddFromBuffer(r *bufio.Reader, user, host string) error {
 		}
 	}
 	tx.Commit()
+	total--
 	d.l.Info.Printf("Processed %d entries, successful %d, failed %d.\n", total, total-failed, failed)
 	return nil
 }
 
 func (d Database) Top20() (result string, e error) {
 	result = fmt.Sprintln("Top-20 commands:")
-	rows, e := d.db.Query("SELECT command, count(*) as count FROM history GROUP BY command ORDER BY count DESC LIMIT 20")
+	rows, e := d.Query("SELECT command, count(*) as count FROM history GROUP BY command ORDER BY count DESC LIMIT 20")
 	if e != nil {
 		return result, e
 	}
@@ -210,7 +211,7 @@ func (d Database) Top20() (result string, e error) {
 
 func (d Database) Last20() (result string, e error) {
 	result = fmt.Sprintln("Last 10 commands:")
-	rows, e := d.db.Query("SELECT  datetime, command FROM history ORDER BY datetime DESC LIMIT 10")
+	rows, e := d.Query("SELECT  datetime, command FROM history ORDER BY datetime DESC LIMIT 10")
 	if e != nil {
 		return result, nil
 	}
@@ -222,6 +223,11 @@ func (d Database) Last20() (result string, e error) {
 		result += fmt.Sprintf("%s %s\n", time, command)
 	}
 	return result, e
+}
+
+func (d Database) LogConn(remote net.Addr) (err error) {
+	_, err = d.Exec(`INSERT INTO connlog VALUES (?, ?);`, time.Now(), remote.String())
+	return
 }
 
 // 	// Create a database tx

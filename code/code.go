@@ -1,4 +1,5 @@
 // Package code contains constants for use with bashistdb
 package code
 
-const TRANSMISSION_END = "END_OF_TRANSMISSION…»»»…"
+// You should end the string below with \n
+const TRANSMISSION_END = "END_OF_TRANSMISSION…»»»…\n"

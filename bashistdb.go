@@ -58,11 +58,6 @@ var (
 	log *llog.Logger
 )
 
-var (
-	total  = 0
-	failed = 0
-)
-
 func init() {
 	// Read flags and set user and hostname if not provided.
 	flag.Parse()
@@ -114,6 +109,10 @@ func main() {
 				log.Fatalln(err)
 			}
 			log.Info.Printf("Connection from %s.\n", conn.RemoteAddr())
+			err = db.LogConn(conn.RemoteAddr())
+			if err != nil {
+				log.Fatalln(err)
+			}
 			go remoteClient(conn)
 
 		}
@@ -125,8 +124,11 @@ func main() {
 			if err != nil {
 				log.Fatalln(err)
 			}
-			fmt.Fprintf(conn, string(history))
-			fmt.Fprintf(conn, code.TRANSMISSION_END+"\n")
+			_, err = conn.Write(history)
+			if err != nil {
+				log.Fatalln(err)
+			}
+			fmt.Fprintf(conn, code.TRANSMISSION_END)
 
 			reply, _ := bufio.NewReader(conn).ReadString('\n')
 			fmt.Println(reply)
