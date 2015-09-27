@@ -100,7 +100,8 @@ func initDB(db *sql.DB) error {
                      );
                     CREATE TABLE connlog (
                         datetime TEXT PRIMARY KEY,
-                        remote   TEXT
+                        remote   TEXT,
+                        reverse  TEXT
                      );`
 
 	if _, err := db.Exec(stmt); err != nil {
@@ -142,7 +143,6 @@ func (d Database) AddFromBuffer(r *bufio.Reader, user, host string) error {
 	parseLine := regexp.MustCompile(`^ *[0-9]+\*? *([0-9T:+-]{24,24}) *(.*)`)
 	tx, _ := d.Begin()
 	stmt := tx.Stmt(d.insert)
-
 	total, failed := 0, 0
 	for {
 		historyLine, err := r.ReadString('\n')
@@ -226,7 +226,19 @@ func (d Database) Last20() (result string, e error) {
 }
 
 func (d Database) LogConn(remote net.Addr) (err error) {
-	_, err = d.Exec(`INSERT INTO connlog VALUES (?, ?);`, time.Now(), remote.String())
+	t := time.Now()
+	_, err = d.Exec(`INSERT INTO connlog VALUES (?, ?, ?);`, t, remote.String(), nil)
+	go func() {
+		if ip, _, err := net.SplitHostPort(remote.String()); err == nil {
+			if addr, err := net.LookupAddr(ip); err == nil {
+				_, _ = d.Exec(`UPDATE connlog
+                                                   SET reverse = ?
+                                                   WHERE datetime = ?
+                                                   AND REMOTE = ?;`,
+					strings.Join(addr, ","), t, remote.String())
+			}
+		}
+	}()
 	return
 }
 

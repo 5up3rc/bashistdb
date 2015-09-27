@@ -23,18 +23,13 @@ package main
 
 import (
 	"bufio"
-	"bytes"
-	"encoding/gob"
 	"flag"
 	"fmt"
-	"io/ioutil"
-	"net"
 	"os"
-
-	"github.com/andmarios/crypto/nacl/saltsecret"
 
 	"projects.30ohm.com/mrsaccess/bashistdb/database"
 	"projects.30ohm.com/mrsaccess/bashistdb/llog"
+	"projects.30ohm.com/mrsaccess/bashistdb/network"
 )
 
 // Golang's RFC3339 does not comply with all RFC3339 representations
@@ -98,89 +93,41 @@ func main() {
 	}
 	defer db.Close()
 
-	stdinReader := bufio.NewReader(os.Stdin)
-	stats, _ := os.Stdin.Stat()
+	// stdinReader := bufio.NewReader(os.Stdin)
+	// stats, _ := os.Stdin.Stat()
 
 	if *serverMode != "" {
-		psock, err := net.Listen("tcp", ":5000")
+		err := network.ServerMode(*serverMode, db, log)
 		if err != nil {
 			log.Fatalln(err)
 		}
-		for {
-			conn, err := psock.Accept()
-			if err != nil {
-				log.Fatalln(err)
-			}
-			log.Info.Printf("Connection from %s.\n", conn.RemoteAddr())
-			err = db.LogConn(conn.RemoteAddr())
-			if err != nil {
-				log.Fatalln(err)
-			}
-			go remoteClient(conn)
-
-		}
+		os.Exit(0)
 	} else if *clientMode != "" {
+		err := network.ClientMode(*clientMode, log)
+		if err != nil {
+			log.Fatalln(err)
+		}
+		os.Exit(0)
+	} else {
+		stdinReader := bufio.NewReader(os.Stdin)
+		stats, _ := os.Stdin.Stat()
+
 		if (stats.Mode() & os.ModeCharDevice) != os.ModeCharDevice {
-			conn, err := net.Dial("tcp", *clientMode)
+			err = db.AddFromBuffer(stdinReader, *user, *hostname)
+			if err != nil {
+				log.Fatalln("Error while processing stdin:", err)
+			}
+		} else if *queryString == "" { // Print some stats
+			res, err := db.Top20()
 			if err != nil {
 				log.Fatalln(err)
 			}
-
-			c := saltsecret.New([]byte("password"), true)
-
-			history, err := ioutil.ReadAll(stdinReader)
+			fmt.Println(res)
+			res, err = db.Last20()
 			if err != nil {
 				log.Fatalln(err)
 			}
-			// history = append(history, []byte(code.TRANSMISSION_END))
-
-			history, err = c.Encrypt(history)
-			if err != nil {
-				log.Fatalln(err)
-			}
-			encoder := gob.NewEncoder(conn)
-			encoder.Encode(history)
-
-			fmt.Printf("Sent hisory.\n")
-			// fmt.Fprintf(conn, code.TRANSMISSION_END)
-
-			reply, _ := bufio.NewReader(conn).ReadString('\n')
-			fmt.Println(reply)
-			conn.Close()
+			fmt.Println(res)
 		}
-	} else if (stats.Mode() & os.ModeCharDevice) != os.ModeCharDevice {
-		err = db.AddFromBuffer(stdinReader, *user, *hostname)
-		if err != nil {
-			log.Fatalln("Error while processing stdin:", err)
-		}
-	} else if *queryString == "" { // Print some stats
-		res, err := db.Top20()
-		if err != nil {
-			log.Fatalln(err)
-		}
-		fmt.Println(res)
-		res, err = db.Last20()
-		if err != nil {
-			log.Fatalln(err)
-		}
-		fmt.Println(res)
 	}
-}
-
-func remoteClient(conn net.Conn) {
-	// r, err := saltsecret.NewReader(conn, []byte("password"), saltsecret.DECRYPT, false)
-	// history, _ := ioutil.ReadAll(r)
-	decoder := gob.NewDecoder(conn)
-	history := new([]byte)
-	decoder.Decode(history)
-
-	c := saltsecret.New([]byte("password"), true)
-
-	dhistory, err := c.Decrypt(*history)
-	if err != nil {
-		log.Fatalln(err)
-	}
-	db.AddFromBuffer(bufio.NewReader(bytes.NewReader(dhistory)), *user, *hostname)
-	fmt.Fprint(conn, "Everything ok.\n")
-	conn.Close()
 }
