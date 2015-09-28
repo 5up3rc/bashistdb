@@ -15,8 +15,6 @@
 // 	You should have received a copy of the GNU General Public License
 // along with bashistdb.  If not, see <http://www.gnu.org/licenses/>.
 
-// Command bashistdb stores and retrieves bash history into/from a sqlite3
-// database.
 package main
 
 import (

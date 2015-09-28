@@ -1,3 +1,8 @@
+/*
+Command bashistdb stores and retrieves bash history into/from a sqlite3
+database. It provides advanced functionality such as saving remotely,
+keeping history from many users, restoring, quering etc.
+
 # bashistdb
 
 ## Introduction
@@ -119,3 +124,5 @@ GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
 along with bashistdb.  If not, see <http://www.gnu.org/licenses/>.
+*/
+package main
