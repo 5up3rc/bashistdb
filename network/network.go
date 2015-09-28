@@ -112,7 +112,7 @@ func handleConn(conn net.Conn) {
 
 	msg, err := decrypt(*encMsg)
 	if err != nil {
-		log.Info.Println(err)
+		log.Info.Println(err, "["+conn.RemoteAddr().String()+"]")
 		return
 	}
 

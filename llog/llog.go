@@ -22,9 +22,16 @@ database.
 package llog
 
 import (
+	"io"
 	"io/ioutil"
 	log "log"
 	"os"
+)
+
+const (
+	SILENT = iota
+	INFO
+	DEBUG
 )
 
 type Logger struct {
@@ -33,24 +40,38 @@ type Logger struct {
 	Debug *log.Logger
 }
 
-func New(quiet, debug bool) *Logger {
+func New(verbosity int) *Logger {
 	var deb, inf *log.Logger
-	if debug {
-		quiet = false
-	}
-	if debug {
-		deb = log.New(os.Stderr, "", log.Ldate|log.Ltime|
-			log.Lshortfile)
-		deb.Println("Debug enabled.")
-	} else {
-		deb = log.New(ioutil.Discard, "", 0)
-	}
-	if !quiet {
-		inf = log.New(os.Stderr, "", log.Ldate|log.Ltime|log.Lshortfile)
-	} else {
-		inf = log.New(ioutil.Discard, "", 0)
+	var debOut, infOut io.Writer
+	debMod := log.Ldate | log.Ltime
+	infMod := log.Ldate | log.Ltime
+
+	switch verbosity {
+	case SILENT:
+		infOut = ioutil.Discard
+		debOut = ioutil.Discard
+	case INFO:
+		infOut = os.Stderr
+		debOut = ioutil.Discard
+	case DEBUG:
+		infOut = os.Stderr
+		debOut = os.Stderr
+		debMod = log.Ldate | log.Ltime | log.Lshortfile
+		infMod = log.Ldate | log.Ltime | log.Lshortfile
+	default:
+		infOut = os.Stderr
+		debOut = ioutil.Discard
 	}
 
+	// std is used for logging fatal errors
 	std := log.New(os.Stderr, "", log.Ldate|log.Ltime|log.Lshortfile)
+
+	// inf is used for logging info messages
+	inf = log.New(infOut, "", infMod)
+
+	// std is used for logging debug messages
+	deb = log.New(debOut, "", debMod)
+	deb.Println("Debug enabled.")
+
 	return &Logger{std, inf, deb}
 }
