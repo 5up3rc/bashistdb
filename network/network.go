@@ -12,6 +12,7 @@ import (
 
 	"github.com/andmarios/crypto/nacl/saltsecret"
 
+	conf "projects.30ohm.com/mrsaccess/bashistdb/configuration"
 	"projects.30ohm.com/mrsaccess/bashistdb/database"
 	"projects.30ohm.com/mrsaccess/bashistdb/llog"
 )
@@ -29,8 +30,14 @@ type Message struct {
 	Hostname string
 }
 
-func ServerMode(address string, db database.Database, log *llog.Logger) error {
-	s, err := net.Listen("tcp", ":5000")
+var log *llog.Logger
+
+func init() {
+	log = conf.Log
+}
+
+func ServerMode(db database.Database) error {
+	s, err := net.Listen("tcp", conf.Address)
 	if err != nil {
 		return err
 	}
@@ -44,16 +51,16 @@ func ServerMode(address string, db database.Database, log *llog.Logger) error {
 		if err != nil {
 			log.Fatalln(err)
 		}
-		go handleConn(conn, db, log)
+		go handleConn(conn, db)
 	}
 	return nil
 }
 
-func ClientMode(address string, log *llog.Logger) error {
+func ClientMode() error {
 	stdinReader := bufio.NewReader(os.Stdin)
 	stats, _ := os.Stdin.Stat()
 	if (stats.Mode() & os.ModeCharDevice) != os.ModeCharDevice {
-		conn, err := net.Dial("tcp", address)
+		conn, err := net.Dial("tcp", conf.Address)
 		if err != nil {
 			return err
 		}
@@ -65,7 +72,7 @@ func ClientMode(address string, log *llog.Logger) error {
 		if err != nil {
 			return err
 		}
-		msg := Message{HISTORY, history, "mrs", "mrs"}
+		msg := Message{HISTORY, history, conf.User, conf.Hostname}
 
 		enc := gob.NewEncoder(conn)
 		encmsg, err := encrypt(msg)
@@ -82,7 +89,7 @@ func ClientMode(address string, log *llog.Logger) error {
 	return nil
 }
 
-func handleConn(conn net.Conn, db database.Database, log *llog.Logger) {
+func handleConn(conn net.Conn, db database.Database) {
 	defer conn.Close()
 
 	dec := gob.NewDecoder(conn)

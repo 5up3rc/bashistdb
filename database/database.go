@@ -35,6 +35,7 @@ import (
 
 	"github.com/mattn/go-sqlite3"
 	"projects.30ohm.com/mrsaccess/bashistdb/code"
+	conf "projects.30ohm.com/mrsaccess/bashistdb/configuration"
 	"projects.30ohm.com/mrsaccess/bashistdb/llog"
 )
 
@@ -45,7 +46,6 @@ const VERSION = "1"
 
 type Database struct {
 	*sql.DB
-	l *llog.Logger
 	statements
 }
 
@@ -53,18 +53,24 @@ type statements struct {
 	insert *sql.Stmt
 }
 
-func New(file string, l *llog.Logger) (Database, error) {
+var log *llog.Logger
+
+func init() {
+	log = conf.Log
+}
+
+func New() (Database, error) {
 	// If database file does not exist, set a flag to create file and table.
 	init := false
-	if _, err := os.Stat(file); os.IsNotExist(err) {
-		l.Info.Println("Database file not found. Creating new.")
+	if _, err := os.Stat(conf.DbFile); os.IsNotExist(err) {
+		log.Info.Println("Database file not found. Creating new.")
 		init = true
 	} else {
-		l.Info.Println("Database file found.")
+		log.Info.Println("Database file found.")
 	}
 	// Open database. SQLite3 provides concurrency in the library level, thus
 	// we don't need to implement locking.
-	db, err := sql.Open("sqlite3", file)
+	db, err := sql.Open("sqlite3", conf.DbFile)
 	if err != nil {
 		return Database{}, err
 	}
@@ -75,7 +81,7 @@ func New(file string, l *llog.Logger) (Database, error) {
 			return Database{}, err
 		}
 	} else {
-		err := upgradeIfNeed(db, l)
+		err := upgradeIfNeed(db)
 		if err != nil {
 			return Database{}, err
 		}
@@ -91,7 +97,7 @@ func New(file string, l *llog.Logger) (Database, error) {
 		}
 	}
 	stmts := statements{insert}
-	return Database{db, l, stmts}, nil
+	return Database{db, stmts}, nil
 }
 
 func initDB(db *sql.DB) error {
@@ -135,7 +141,7 @@ func (d Database) AddRecord(user, host, command string, time time.Time) error {
 		// history from time to time.
 		if driverErr, ok := err.(sqlite3.Error); ok {
 			if driverErr.ExtendedCode == sqlite3.ErrConstraintPrimaryKey {
-				d.l.Debug.Println("Duplicate entry. Ignoring.", user, host, command, time)
+				log.Debug.Println("Duplicate entry. Ignoring.", user, host, command, time)
 			} else {
 				return err
 			}
@@ -167,7 +173,7 @@ func (d Database) AddFromBuffer(r *bufio.Reader, user, host string) error {
 		}
 		args := parseLine.FindStringSubmatch(historyLine)
 		if len(args) != 3 {
-			d.l.Info.Println("Could't decode line. Skipping:", historyLine)
+			log.Info.Println("Could't decode line. Skipping:", historyLine)
 			failed++
 			continue
 		}
@@ -184,7 +190,7 @@ func (d Database) AddFromBuffer(r *bufio.Reader, user, host string) error {
 			// history from time to time.
 			if driverErr, ok := err.(sqlite3.Error); ok {
 				if driverErr.ExtendedCode == sqlite3.ErrConstraintPrimaryKey {
-					d.l.Debug.Println("Duplicate entry. Ignoring.", user, host, strings.TrimSuffix(args[2], "\n"), time)
+					log.Debug.Println("Duplicate entry. Ignoring.", user, host, strings.TrimSuffix(args[2], "\n"), time)
 					failed++
 				} else {
 					tx.Rollback()
@@ -197,7 +203,7 @@ func (d Database) AddFromBuffer(r *bufio.Reader, user, host string) error {
 	}
 	tx.Commit()
 	total--
-	d.l.Info.Printf("Processed %d entries, successful %d, failed %d.\n", total, total-failed, failed)
+	log.Info.Printf("Processed %d entries, successful %d, failed %d.\n", total, total-failed, failed)
 	return nil
 }
 
@@ -250,7 +256,7 @@ func (d Database) LogConn(remote net.Addr) (err error) {
 	return
 }
 
-func upgradeIfNeed(d *sql.DB, log *llog.Logger) error {
+func upgradeIfNeed(d *sql.DB) error {
 	var version string
 	err := d.QueryRow(`SELECT value FROM admin WHERE key LIKE "version"`).Scan(&version)
 	if err != nil {
