@@ -80,7 +80,6 @@ func ClientMode(address string, log *llog.Logger) error {
 			return err
 		}
 		connEncoder.Encode(encMsg.Bytes())
-		fmt.Println(len(encMsg.Bytes()))
 		fmt.Printf("Sent history.\n")
 		// fmt.Fprintf(conn, code.TRANSMISSION_END)
 
@@ -101,6 +100,8 @@ func handleConn(conn net.Conn, db database.Database, log *llog.Logger) {
 	decrypter, err := saltsecret.NewReader(bytes.NewReader(*encMsg), []byte("password"), saltsecret.DECRYPT, false)
 	if err != nil {
 		log.Info.Println(err)
+		conn.Close()
+		return
 	}
 
 	msg := &Message{}

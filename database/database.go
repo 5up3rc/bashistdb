@@ -24,6 +24,7 @@ package database
 import (
 	"bufio"
 	"database/sql"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -39,6 +40,8 @@ import (
 
 // Golang's RFC3339 does not comply with all RFC3339 representations
 const RFC3339alt = "2006-01-02T15:04:05-0700"
+
+const VERSION = "1"
 
 type Database struct {
 	*sql.DB
@@ -63,13 +66,18 @@ func New(file string, l *llog.Logger) (Database, error) {
 	// we don't need to implement locking.
 	db, err := sql.Open("sqlite3", file)
 	if err != nil {
-		return Database{nil, l, statements{nil}}, err
+		return Database{}, err
 	}
 	// If database is new, initialize it with our tables.
 	if init {
 		if err = initDB(db); err != nil {
 			_ = db.Close()
-			return Database{nil, l, statements{nil}}, err
+			return Database{}, err
+		}
+	} else {
+		err := upgradeIfNeed(db, l)
+		if err != nil {
+			return Database{}, err
 		}
 	}
 	// Prepare various statements
@@ -79,7 +87,7 @@ func New(file string, l *llog.Logger) (Database, error) {
 	for _, e := range errs {
 		if e != nil {
 			_ = db.Close()
-			return Database{nil, l, statements{nil}}, e
+			return Database{}, e
 		}
 	}
 	stmts := statements{insert}
@@ -108,9 +116,9 @@ func initDB(db *sql.DB) error {
 		return err
 	}
 
-	stmt = `INSERT INTO admin VALUES ("version","1")`
+	stmt = `INSERT INTO admin VALUES ("version", ?)`
 
-	if _, err := db.Exec(stmt); err != nil {
+	if _, err := db.Exec(stmt, VERSION); err != nil {
 		return err
 	}
 	return nil
@@ -242,76 +250,24 @@ func (d Database) LogConn(remote net.Addr) (err error) {
 	return
 }
 
-// 	// Create a database tx
-// 	tx, err := db.Begin()
-// 	// Commit on exit. This is ok (and wanted) for our case since we do buffered commits
-// 	// and we have only one table and no consistency issues.
-// 	defer tx.Commit()
-// 	if err != nil {
-// 		log.Fatalln(err)
-// 	}
+func upgradeIfNeed(d *sql.DB, log *llog.Logger) error {
+	var version string
+	err := d.QueryRow(`SELECT value FROM admin WHERE key LIKE "version"`).Scan(&version)
+	if err != nil {
+		return err
+	}
 
-// 	// Commit tx every five seconds
-// 	go func() {
-// 		for _ = range time.Tick(5 * time.Second) {
-// 			tx.Commit()
-// 		}
-// 	}()
+	switch version {
+	case "1":
+		fallthrough
+	default:
+		log.Debug.Println("Database on latest version.")
+		return nil
+	}
 
-// 	// Prepare statement for inserting into database new entries
-// 	insertStmt, err = tx.Prepare("INSERT INTO history(user, host, command, datetime) values(?, ?, ?, ?)")
-// 	if err != nil {
-// 		log.Fatalln(err)
-// 	}
-// 	defer insertStmt.Close()
+	if version != VERSION {
+		return errors.New("Database version different than code version but couldn't fix it.")
+	}
 
-// 	stdinReader := bufio.NewReader(os.Stdin)
-// 	stats, _ := os.Stdin.Stat()
-// 	if (stats.Mode() & os.ModeCharDevice) != os.ModeCharDevice {
-// 		err = readFromStdin(stdinReader)
-// 		if err != nil {
-// 			log.Fatalln("Error while processing stdin:", err)
-// 		}
-// 		info.Printf("Processed %d entries, successful %d, failed %d.\n", total, total-failed, failed)
-// 	} else if *queryString == "" { // Print some stats
-// 		tx.Commit()
-// 		fmt.Println("Top-20 commands:")
-// 		rows, err := db.Query("SELECT command, count(*) as count FROM history GROUP BY command ORDER BY count DESC LIMIT 20")
-// 		if err != nil {
-// 			log.Fatal(err)
-// 		}
-// 		defer rows.Close()
-// 		for rows.Next() {
-// 			var command string
-// 			var count int
-// 			rows.Scan(&command, &count)
-// 			fmt.Printf("%d: %s\n", count, command)
-// 		}
-// 		fmt.Println("=================")
-// 		fmt.Println("Last 10 commands:")
-// 		rows, err = db.Query("SELECT  datetime, command FROM history ORDER BY datetime DESC LIMIT 10")
-// 		if err != nil {
-// 			log.Fatal(err)
-// 		}
-// 		defer rows.Close()
-// 		for rows.Next() {
-// 			var command string
-// 			var time time.Time
-// 			rows.Scan(&time, &command)
-// 			fmt.Printf("%s %s\n", time, command)
-// 		}
-// 	} else {
-// 		tx.Commit()
-// 		fmt.Println("Results:")
-// 		rows, err := db.Query("SELECT command FROM history " + *queryString)
-// 		if err != nil {
-// 			log.Fatal(err)
-// 		}
-// 		defer rows.Close()
-// 		for rows.Next() {
-// 			var command string
-// 			rows.Scan(&command)
-// 			fmt.Printf("%s\n", command)
-// 		}
-// 	}
-// }
+	return nil
+}

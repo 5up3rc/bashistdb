@@ -86,18 +86,19 @@ func init() {
 }
 
 func main() {
-	var err error
-	db, err = database.New(*dbFile, log)
-	if err != nil {
-		log.Fatalln("Failed to load database:", err)
-	}
-	defer db.Close()
 
 	// stdinReader := bufio.NewReader(os.Stdin)
 	// stats, _ := os.Stdin.Stat()
 
 	if *serverMode != "" {
-		err := network.ServerMode(*serverMode, db, log)
+		var err error
+		db, err = database.New(*dbFile, log)
+		if err != nil {
+			log.Fatalln("Failed to load database:", err)
+		}
+		defer db.Close()
+
+		err = network.ServerMode(*serverMode, db, log)
 		if err != nil {
 			log.Fatalln(err)
 		}
@@ -109,6 +110,13 @@ func main() {
 		}
 		os.Exit(0)
 	} else {
+		var err error
+		db, err = database.New(*dbFile, log)
+		if err != nil {
+			log.Fatalln("Failed to load database:", err)
+		}
+		defer db.Close()
+
 		stdinReader := bufio.NewReader(os.Stdin)
 		stats, _ := os.Stdin.Stat()
 
