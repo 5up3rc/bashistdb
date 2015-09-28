@@ -31,16 +31,25 @@ type Message struct {
 }
 
 var log *llog.Logger
+var db database.Database
 
 func init() {
 	log = conf.Log
 }
 
-func ServerMode(db database.Database) error {
+func ServerMode() error {
+	var err error
+	db, err = database.New()
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+
 	s, err := net.Listen("tcp", conf.Address)
 	if err != nil {
 		return err
 	}
+	log.Info.Println("Started listening on:", conf.Address)
 	for {
 		conn, err := s.Accept()
 		if err != nil {
@@ -51,7 +60,7 @@ func ServerMode(db database.Database) error {
 		if err != nil {
 			log.Fatalln(err)
 		}
-		go handleConn(conn, db)
+		go handleConn(conn)
 	}
 	return nil
 }
@@ -89,7 +98,7 @@ func ClientMode() error {
 	return nil
 }
 
-func handleConn(conn net.Conn, db database.Database) {
+func handleConn(conn net.Conn) {
 	defer conn.Close()
 
 	dec := gob.NewDecoder(conn)

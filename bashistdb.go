@@ -35,72 +35,26 @@ import (
 // Golang's RFC3339 does not comply with all RFC3339 representations
 const RFC3339alt = "2006-01-02T15:04:05-0700"
 
-var (
-	db database.Database
-)
-
-var (
-	log *llog.Logger
-)
-
-func init() {
-
-	// Read flags and set user and hostname if not provided.
-	// flag.Parse()
-	// log = llog.New(*quietFlag, *debugFlag)
-
-	// if *user == "" {
-	// 	*user = os.Getenv("USER")
-	// }
-	// if *user == "" {
-	// 	log.Fatalln("Couldn't read username from $USER system variable and none was provided by -user flag.")
-	// }
-
-	// var err error
-	// if *hostname == "" {
-	// 	*hostname, err = os.Hostname()
-	// 	if err != nil {
-	// 		log.Fatalln("Couldn't read hostname from $HOSTNAME system variable and none was provided by -hostname flag:", err)
-	// 	}
-	// }
-
-	// log.Info.Println("Welcome " + *user + "@" + *hostname + ".")
-
-	// if *printVersion {
-	// 	fmt.Println("bashistdb v" + version)
-	// 	fmt.Println("https://github.com/andmarios/bashistdb")
-	// 	os.Exit(0)
-	//}
-}
+var log *llog.Logger
 
 func main() {
-
-	// stdinReader := bufio.NewReader(os.Stdin)
-	// stats, _ := os.Stdin.Stat()
 	log = conf.Log
 
-	if conf.Mode == conf.SERVER {
-		var err error
-		db, err = database.New()
-		if err != nil {
-			log.Fatalln("Failed to load database:", err)
-		}
-		defer db.Close()
-
-		err = network.ServerMode(db)
+	switch conf.Mode {
+	case conf.SERVER:
+		err := network.ServerMode()
 		if err != nil {
 			log.Fatalln(err)
 		}
 		os.Exit(0)
-	} else if conf.Mode == conf.CLIENT {
+	case conf.CLIENT:
 		err := network.ClientMode()
 		if err != nil {
 			log.Fatalln(err)
 		}
 		os.Exit(0)
-	} else {
-		var err error
-		db, err = database.New()
+	default:
+		db, err := database.New()
 		if err != nil {
 			log.Fatalln("Failed to load database:", err)
 		}

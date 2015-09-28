@@ -76,55 +76,7 @@ func init() {
 	case *clientMode != "":
 		Mode = CLIENT
 		Address = *clientMode
+	default:
+		Mode = QUERY
 	}
 }
-
-// 	if *serverMode != "" {
-// 		var err error
-// 		db, err = database.New(*dbFile, log)
-// 		if err != nil {
-// 			log.Fatalln("Failed to load database:", err)
-// 		}
-// 		defer db.Close()
-
-// 		err = network.ServerMode(*serverMode, db, log)
-// 		if err != nil {
-// 			log.Fatalln(err)
-// 		}
-// 		os.Exit(0)
-// 	} else if *clientMode != "" {
-// 		err := network.ClientMode(*clientMode, log)
-// 		if err != nil {
-// 			log.Fatalln(err)
-// 		}
-// 		os.Exit(0)
-// 	} else {
-// 		var err error
-// 		db, err = database.New(*dbFile, log)
-// 		if err != nil {
-// 			log.Fatalln("Failed to load database:", err)
-// 		}
-// 		defer db.Close()
-
-// 		stdinReader := bufio.NewReader(os.Stdin)
-// 		stats, _ := os.Stdin.Stat()
-
-// 		if (stats.Mode() & os.ModeCharDevice) != os.ModeCharDevice {
-// 			err = db.AddFromBuffer(stdinReader, *user, *hostname)
-// 			if err != nil {
-// 				log.Fatalln("Error while processing stdin:", err)
-// 			}
-// 		} else if *queryString == "" { // Print some stats
-// 			res, err := db.Top20()
-// 			if err != nil {
-// 				log.Fatalln(err)
-// 			}
-// 			fmt.Println(res)
-// 			res, err = db.Last20()
-// 			if err != nil {
-// 				log.Fatalln(err)
-// 			}
-// 			fmt.Println(res)
-// 		}
-// 	}
-// }
