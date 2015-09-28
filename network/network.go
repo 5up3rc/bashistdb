@@ -57,6 +57,7 @@ func ClientMode(address string, log *llog.Logger) error {
 		if err != nil {
 			return err
 		}
+		defer conn.Close()
 
 		// c := saltsecret.New([]byte("password"), true)
 
@@ -66,22 +67,13 @@ func ClientMode(address string, log *llog.Logger) error {
 		}
 		msg := Message{HISTORY, history, "mrs", "mrs"}
 
-		connEncoder := gob.NewEncoder(conn)
-		var encMsg bytes.Buffer
-		encrypter, err := saltsecret.NewWriter(&encMsg, []byte("password"), saltsecret.ENCRYPT, true)
+		enc := gob.NewEncoder(conn)
+		encmsg, err := encrypt(msg)
 		if err != nil {
 			return err
 		}
-		msgEncoder := gob.NewEncoder(encrypter)
-		msgEncoder.Encode(msg)
-		err = encrypter.Flush()
-		//history, err = c.Encrypt(history)
-		if err != nil {
-			return err
-		}
-		connEncoder.Encode(encMsg.Bytes())
-		fmt.Printf("Sent history.\n")
-		// fmt.Fprintf(conn, code.TRANSMISSION_END)
+		enc.Encode(encmsg)
+		log.Info.Println("Sent history.")
 
 		reply, _ := bufio.NewReader(conn).ReadString('\n')
 		fmt.Println(reply)
@@ -91,27 +83,53 @@ func ClientMode(address string, log *llog.Logger) error {
 }
 
 func handleConn(conn net.Conn, db database.Database, log *llog.Logger) {
-	// r, err := saltsecret.NewReader(conn, []byte("password"), saltsecret.DECRYPT, false)
-	// history, _ := ioutil.ReadAll(r)
-	connDecoder := gob.NewDecoder(conn)
-	encMsg := &[]byte{}
-	connDecoder.Decode(encMsg)
+	defer conn.Close()
 
-	decrypter, err := saltsecret.NewReader(bytes.NewReader(*encMsg), []byte("password"), saltsecret.DECRYPT, false)
+	dec := gob.NewDecoder(conn)
+	encMsg := &[]byte{}
+	dec.Decode(encMsg)
+
+	msg, err := decrypt(*encMsg)
 	if err != nil {
 		log.Info.Println(err)
-		conn.Close()
 		return
 	}
-
-	msg := &Message{}
-	msgDecoder := gob.NewDecoder(decrypter)
-	msgDecoder.Decode(msg)
 
 	switch msg.Type {
 	case HISTORY:
 		db.AddFromBuffer(bufio.NewReader(bytes.NewReader(msg.Payload)), msg.User, msg.Hostname)
 	}
 	fmt.Fprint(conn, "Everything ok.\n")
-	conn.Close()
+}
+
+func encrypt(m Message) ([]byte, error) {
+	var encMsg bytes.Buffer
+	encrypter, err := saltsecret.NewWriter(&encMsg, []byte("password"), saltsecret.ENCRYPT, true)
+	if err != nil {
+		return nil, err
+	}
+
+	enc := gob.NewEncoder(encrypter)
+	enc.Encode(m)
+
+	err = encrypter.Flush()
+	if err != nil {
+		return nil, err
+	}
+
+	return encMsg.Bytes(), nil
+}
+
+func decrypt(encmsg []byte) (Message, error) {
+	r := bytes.NewReader(encmsg)
+	decrypter, err := saltsecret.NewReader(r, []byte("password"), saltsecret.DECRYPT, false)
+	if err != nil {
+		return Message{}, err
+	}
+
+	msg := &Message{}
+	dec := gob.NewDecoder(decrypter)
+	dec.Decode(msg)
+
+	return *msg, nil
 }
