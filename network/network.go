@@ -18,7 +18,8 @@ import (
 )
 
 const (
-	PRINT = iota
+	_ = iota
+	RESULT
 	HISTORY
 	QUERY
 )
@@ -81,20 +82,23 @@ func ClientMode() error {
 		if err != nil {
 			return err
 		}
+
 		msg := Message{HISTORY, history, conf.User, conf.Hostname}
 
-		enc := gob.NewEncoder(conn)
-		encmsg, err := encrypt(msg)
+		if err := encryptDispatch(conn, msg); err != nil {
+			return err
+		}
+
+		log.Info.Println("Sent history.")
+
+		reply, err := receiveDecrypt(conn)
 		if err != nil {
 			return err
 		}
-		if err = enc.Encode(encmsg); err != nil {
-			return err
+		switch reply.Type {
+		case RESULT:
+			fmt.Println(string(reply.Payload))
 		}
-		log.Info.Println("Sent history.")
-
-		reply, _ := bufio.NewReader(conn).ReadString('\n')
-		fmt.Println(reply)
 		conn.Close()
 	}
 	return nil
@@ -103,14 +107,7 @@ func ClientMode() error {
 func handleConn(conn net.Conn) {
 	defer conn.Close()
 
-	dec := gob.NewDecoder(conn)
-	encMsg := &[]byte{}
-	if err := dec.Decode(encMsg); err != nil {
-		log.Info.Println(err)
-		return
-	}
-
-	msg, err := decrypt(*encMsg)
+	msg, err := receiveDecrypt(conn)
 	if err != nil {
 		log.Info.Println(err, "["+conn.RemoteAddr().String()+"]")
 		return
@@ -121,35 +118,64 @@ func handleConn(conn net.Conn) {
 		r := bufio.NewReader(bytes.NewReader(msg.Payload))
 		db.AddFromBuffer(r, msg.User, msg.Hostname)
 	}
-	fmt.Fprint(conn, "Everything ok.\n")
+
+	reply := Message{RESULT, []byte("Everything ok.\n"), "", ""}
+	if err := encryptDispatch(conn, reply); err != nil {
+		log.Println(err)
+	}
 }
 
-func encrypt(m Message) ([]byte, error) {
+func encryptDispatch(conn net.Conn, m Message) error {
+	// We want to sent encrypted data.
+	// In order to encrypt, we need to first serialize the message.
+	// In order to sent/receive hassle free, we need to serialize the encrypted message
+	// So: msg -> GOB -> ENCRYPT -> GOB -> (dispatch)
+
+	// Create encrypter
 	var encMsg bytes.Buffer
 	encrypter, err := saltsecret.NewWriter(&encMsg, conf.Key, saltsecret.ENCRYPT, true)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
+	// Serialize message
 	enc := gob.NewEncoder(encrypter)
 	if err = enc.Encode(m); err != nil {
-		return nil, err
+		return err
 	}
 
+	// Flush encrypter to actuall encrypt the message
 	if err = encrypter.Flush(); err != nil {
-		return nil, err
+		return err
 	}
 
-	return encMsg.Bytes(), nil
+	// Serialize encrypted message and dispatch it
+	dispatch := gob.NewEncoder(conn)
+	if err = dispatch.Encode(encMsg.Bytes()); err != nil {
+		return err
+	}
+
+	return nil
 }
 
-func decrypt(encmsg []byte) (Message, error) {
-	r := bytes.NewReader(encmsg)
+func receiveDecrypt(conn net.Conn) (Message, error) {
+	// (incoming data) -> de-GOB -> DECRYPT -> de-GOB -> msg
+
+	// Receive data and de-serialize to get the encrypted message
+	encMsg := &[]byte{}
+	receive := gob.NewDecoder(conn)
+	if err := receive.Decode(encMsg); err != nil {
+		return Message{}, err
+	}
+
+	// Create decrypter and pass it the encrypted message
+	r := bytes.NewReader(*encMsg)
 	decrypter, err := saltsecret.NewReader(r, conf.Key, saltsecret.DECRYPT, false)
 	if err != nil {
 		return Message{}, err
 	}
 
+	// Read unencrypted serialized message and de-serialize it
 	msg := &Message{}
 	dec := gob.NewDecoder(decrypter)
 	if err = dec.Decode(msg); err != nil {
