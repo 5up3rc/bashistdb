@@ -22,6 +22,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/gob"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net"
@@ -38,7 +39,8 @@ const (
 	_ = iota
 	RESULT
 	HISTORY
-	QUERY
+	DEFAULT
+	RESTORE
 )
 
 type Message struct {
@@ -90,48 +92,59 @@ func ClientMode() error {
 	}
 	defer conn.Close()
 
-	stdinReader := bufio.NewReader(os.Stdin)
-	stats, _ := os.Stdin.Stat()
-	if (stats.Mode() & os.ModeCharDevice) != os.ModeCharDevice {
-		history, err := ioutil.ReadAll(stdinReader)
-		if err != nil {
-			return err
+	// If Function == DEFAULT, attempt to read from Stdin
+	if conf.Function == conf.DEFAULT {
+		stdinReader := bufio.NewReader(os.Stdin)
+		stats, _ := os.Stdin.Stat()
+		if (stats.Mode() & os.ModeCharDevice) != os.ModeCharDevice {
+			history, err := ioutil.ReadAll(stdinReader)
+			if err != nil {
+				return err
+			}
+
+			msg := Message{HISTORY, history, conf.User, conf.Hostname}
+
+			if err := encryptDispatch(conn, msg); err != nil {
+				return err
+			}
+
+			log.Info.Println("Sent history.")
+
+			reply, err := receiveDecrypt(conn)
+			if err != nil {
+				return err
+			}
+			switch reply.Type {
+			case RESULT:
+				fmt.Println(string(reply.Payload))
+			}
+			return nil
 		}
+	}
 
-		msg := Message{HISTORY, history, conf.User, conf.Hostname}
+	// Not Stdin or other function? Switch.
+	var msg Message
+	switch conf.Function {
+	case conf.DEFAULT:
+		msg = Message{Type: DEFAULT, User: conf.User, Hostname: conf.Hostname}
+	case conf.RESTORE:
+		msg = Message{Type: RESTORE, User: conf.User, Hostname: conf.Hostname}
+	default:
+		return errors.New("unknown function")
+	}
+	if err := encryptDispatch(conn, msg); err != nil {
+		return err
+	}
+	log.Info.Println("Sent request.")
 
-		if err := encryptDispatch(conn, msg); err != nil {
-			return err
-		}
+	reply, err := receiveDecrypt(conn)
+	if err != nil {
+		return err
+	}
 
-		log.Info.Println("Sent history.")
-
-		reply, err := receiveDecrypt(conn)
-		if err != nil {
-			return err
-		}
-		switch reply.Type {
-		case RESULT:
-			fmt.Println(string(reply.Payload))
-		}
-	} else {
-		msg := Message{QUERY, []byte{}, conf.User, conf.Hostname}
-
-		if err := encryptDispatch(conn, msg); err != nil {
-			return err
-		}
-
-		log.Info.Println("Queried.")
-
-		reply, err := receiveDecrypt(conn)
-		if err != nil {
-			return err
-		}
-
-		switch reply.Type {
-		case RESULT:
-			fmt.Println(string(reply.Payload))
-		}
+	switch reply.Type {
+	case RESULT:
+		fmt.Println(string(reply.Payload))
 	}
 	return nil
 }
@@ -151,7 +164,7 @@ func handleConn(conn net.Conn) {
 		r := bufio.NewReader(bytes.NewReader(msg.Payload))
 		db.AddFromBuffer(r, msg.User, msg.Hostname)
 		result = "Everything ok.\n"
-	case QUERY:
+	case DEFAULT:
 		res1, err := db.Top20()
 		if err != nil {
 			log.Fatalln(err)
@@ -161,6 +174,11 @@ func handleConn(conn net.Conn) {
 			log.Fatalln(err)
 		}
 		result = res1 + res2
+	case RESTORE:
+		result, err = db.Restore(msg.User, msg.Hostname)
+		if err != nil {
+			log.Fatalln(err)
+		}
 	}
 
 	reply := Message{RESULT, []byte(result), "", ""}

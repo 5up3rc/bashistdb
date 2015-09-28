@@ -39,10 +39,12 @@ var (
 	clientMode   = flag.String("c", "", "run in (network) client mode, connect to address")
 	port         = flag.String("port", "35628", "server port to listen on/connect to")
 	passphrase   = flag.String("p", "", "passphrase to encrypt data with")
+	restore      = flag.Bool("restore", false, "restores history data (prints to stdout, you may redirect it to your bash_history file), user and hostname act as wildcard surrounded search variables (% means all)")
 )
 
 var (
-	Mode     int
+	Mode     int // mode of operation (local, server, client, etc)
+	Function int // function (read, restore, et)
 	Log      *llog.Logger
 	Address  string
 	User     string
@@ -51,22 +53,31 @@ var (
 	Key      []byte
 )
 
+// Modes
 const (
 	_ = iota
 	SERVER
 	CLIENT
-	QUERY
-	PRINT_VERSION
+	LOCAL
+	PRINT_VERSION // version flag overrides anything else
 )
 
+// Functions
+const (
+	_       = iota
+	DEFAULT // Default tries to read from stdin or print some stats if it can't
+	RESTORE
+)
+
+// Currently TRANSMISSION_END is unused.
 // You should end the string below with \n
-// Currently it is unused.
 const TRANSMISSION_END = "END_OF_TRANSMISSION…»»»…\n"
 
 func init() {
 	// Read flags and set user and hostname if not provided.
 	flag.Parse()
 
+	// Determine mode of operation
 	switch {
 	case *printVersion:
 		Mode = PRINT_VERSION
@@ -82,7 +93,20 @@ func init() {
 		Mode = CLIENT
 		Address = *clientMode + ":" + *port
 	default:
-		Mode = QUERY
+		Mode = LOCAL
+	}
+
+	switch {
+	case *restore:
+		Function = RESTORE
+	default:
+		Function = DEFAULT
+	}
+
+	if Mode == SERVER && Function != DEFAULT {
+		fmt.Println("Incompatible options: asked for server mode and other functions.")
+		flag.PrintDefaults()
+		os.Exit(1)
 	}
 
 	if *serverMode && *verbosity == 0 {

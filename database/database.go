@@ -23,6 +23,7 @@ package database
 
 import (
 	"bufio"
+	"bytes"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -264,10 +265,7 @@ func upgradeIfNeed(d *sql.DB) error {
 
 	switch version {
 	case "1":
-		fallthrough
-	default:
 		log.Debug.Println("Database on latest version.")
-		return nil
 	}
 
 	if version != VERSION {
@@ -275,4 +273,23 @@ func upgradeIfNeed(d *sql.DB) error {
 	}
 
 	return nil
+}
+
+// Restore returns history within the search criteria in timestamped bash_history format
+func (d Database) Restore(user, hostname string) (string, error) {
+	rows, err := d.Query(`SELECT datetime, command FROM history WHERE user LIKE ? AND host LIKE ?`,
+		"%"+user+"%", "%"+hostname+"%")
+	if err != nil {
+		return "", err
+	}
+	defer rows.Close()
+
+	var result bytes.Buffer
+	for rows.Next() {
+		var command string
+		var t time.Time
+		rows.Scan(&t, &command)
+		result.WriteString(fmt.Sprintf("#%d\n%s\n", t.Unix(), command))
+	}
+	return result.String(), nil
 }
