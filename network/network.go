@@ -116,7 +116,7 @@ func ClientMode() error {
 			}
 			switch reply.Type {
 			case RESULT:
-				fmt.Println(string(reply.Payload))
+				log.Info.Println("Received:", string(reply.Payload))
 			}
 			return nil
 		}

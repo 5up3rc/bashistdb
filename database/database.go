@@ -42,7 +42,7 @@ import (
 // Golang's RFC3339 does not comply with all RFC3339 representations
 const RFC3339alt = "2006-01-02T15:04:05-0700"
 
-const VERSION = "1"
+const VERSION = "2"
 
 type Database struct {
 	*sql.DB
@@ -114,9 +114,17 @@ func initDB(db *sql.DB) error {
                      );
                     CREATE TABLE connlog (
                         datetime TEXT PRIMARY KEY,
-                        remote   TEXT,
-                        reverse  TEXT
-                     );`
+                        remote   TEXT
+                     );
+	            CREATE TABLE rlookup (
+                        ip      TEXT PRIMARY KEY,
+                        reverse TEXT
+                     );
+                    CREATE VIEW connections AS
+                         SELECT datetime, remote, reverse
+                           FROM connlog AS c
+                             JOIN rlookup AS r
+                               ON c.remote=d.ip;`
 
 	if _, err := db.Exec(stmt); err != nil {
 		return err
@@ -242,14 +250,17 @@ func (d Database) Last20() (result string, e error) {
 func (d Database) LogConn(remote net.Addr) (err error) {
 	t := time.Now()
 	_, err = d.Exec(`INSERT INTO connlog VALUES (?, ?, ?);`, t, remote.String(), nil)
+	// Perform a reverse lookup if needed.
 	go func() {
 		if ip, _, err := net.SplitHostPort(remote.String()); err == nil {
-			if addr, err := net.LookupAddr(ip); err == nil {
-				_, _ = d.Exec(`UPDATE connlog
-                                                   SET reverse = ?
-                                                   WHERE datetime = ?
-                                                   AND REMOTE = ?;`,
-					strings.Join(addr, ","), t, remote.String())
+			var rip string
+			err = d.QueryRow("SELECT ip FROM rlookup WHERE ip = ?", ip).Scan(&rip)
+			if err == sql.ErrNoRows {
+				if addr, err := net.LookupAddr(ip); err == nil {
+					_, _ = d.Exec(`INSERT INTO rlookup(ip, reverse)
+                                                           VALUES(? ,?)`,
+						remote.String(), strings.Join(addr, ","))
+				}
 			}
 		}
 	}()
@@ -265,6 +276,38 @@ func upgradeIfNeed(d *sql.DB) error {
 
 	switch version {
 	case "1":
+		tx, err := d.Begin()
+		if err != nil {
+			return err
+		}
+		stmt := `CREATE TABLE connlog_new(
+                             datetime TEXT PRIMARY KEY,
+                             remote   TEXT);
+                         INSERT INTO connlog_new
+                           SELECT datetime, remote FROM connlog;
+                         DROP TABLE connlog;
+                         ALTER TABLE connlog_new RENAME TO 'connlog';
+                         CREATE TABLE rlookup (
+                             ip      TEXT PRIMARY KEY,
+                             reverse TEXT
+                         );
+                         CREATE VIEW connections AS
+                             SELECT datetime, remote, reverse
+                               FROM connlog AS c
+                                 LEFT JOIN rlookup AS r
+                                   ON c.remote = r.ip;`
+		if _, err = tx.Exec(stmt); err != nil {
+			return err
+		}
+		if _, err = tx.Exec(`UPDATE admin SET value=? WHERE key LIKE 'version'`, VERSION); err != nil {
+			return err
+		}
+		if err = tx.Commit(); err != nil {
+			return err
+		}
+		log.Info.Println("Database upgraded to latest version.")
+		return nil
+	case "2":
 		log.Debug.Println("Database on latest version.")
 	}
 
