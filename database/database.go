@@ -34,7 +34,6 @@ import (
 	"time"
 
 	"github.com/mattn/go-sqlite3"
-	"projects.30ohm.com/mrsaccess/bashistdb/code"
 	conf "projects.30ohm.com/mrsaccess/bashistdb/configuration"
 	"projects.30ohm.com/mrsaccess/bashistdb/llog"
 )
@@ -168,9 +167,9 @@ func (d Database) AddFromBuffer(r *bufio.Reader, user, host string) error {
 				return err
 			}
 		}
-		if historyLine == code.TRANSMISSION_END {
-			break
-		}
+		// if historyLine == conf.TRANSMISSION_END {
+		// 	break
+		// }
 		args := parseLine.FindStringSubmatch(historyLine)
 		if len(args) != 3 {
 			log.Info.Println("Could't decode line. Skipping:", historyLine)

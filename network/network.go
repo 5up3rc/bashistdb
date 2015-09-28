@@ -88,7 +88,9 @@ func ClientMode() error {
 		if err != nil {
 			return err
 		}
-		enc.Encode(encmsg)
+		if err = enc.Encode(encmsg); err != nil {
+			return err
+		}
 		log.Info.Println("Sent history.")
 
 		reply, _ := bufio.NewReader(conn).ReadString('\n')
@@ -103,7 +105,10 @@ func handleConn(conn net.Conn) {
 
 	dec := gob.NewDecoder(conn)
 	encMsg := &[]byte{}
-	dec.Decode(encMsg)
+	if err := dec.Decode(encMsg); err != nil {
+		log.Info.Println(err)
+		return
+	}
 
 	msg, err := decrypt(*encMsg)
 	if err != nil {
@@ -113,23 +118,25 @@ func handleConn(conn net.Conn) {
 
 	switch msg.Type {
 	case HISTORY:
-		db.AddFromBuffer(bufio.NewReader(bytes.NewReader(msg.Payload)), msg.User, msg.Hostname)
+		r := bufio.NewReader(bytes.NewReader(msg.Payload))
+		db.AddFromBuffer(r, msg.User, msg.Hostname)
 	}
 	fmt.Fprint(conn, "Everything ok.\n")
 }
 
 func encrypt(m Message) ([]byte, error) {
 	var encMsg bytes.Buffer
-	encrypter, err := saltsecret.NewWriter(&encMsg, []byte("password"), saltsecret.ENCRYPT, true)
+	encrypter, err := saltsecret.NewWriter(&encMsg, conf.Key, saltsecret.ENCRYPT, true)
 	if err != nil {
 		return nil, err
 	}
 
 	enc := gob.NewEncoder(encrypter)
-	enc.Encode(m)
+	if err = enc.Encode(m); err != nil {
+		return nil, err
+	}
 
-	err = encrypter.Flush()
-	if err != nil {
+	if err = encrypter.Flush(); err != nil {
 		return nil, err
 	}
 
@@ -138,14 +145,16 @@ func encrypt(m Message) ([]byte, error) {
 
 func decrypt(encmsg []byte) (Message, error) {
 	r := bytes.NewReader(encmsg)
-	decrypter, err := saltsecret.NewReader(r, []byte("password"), saltsecret.DECRYPT, false)
+	decrypter, err := saltsecret.NewReader(r, conf.Key, saltsecret.DECRYPT, false)
 	if err != nil {
 		return Message{}, err
 	}
 
 	msg := &Message{}
 	dec := gob.NewDecoder(decrypter)
-	dec.Decode(msg)
+	if err = dec.Decode(msg); err != nil {
+		return Message{}, err
+	}
 
 	return *msg, nil
 }

@@ -3,7 +3,6 @@ package configuration
 
 import (
 	"flag"
-	"fmt"
 	"os"
 
 	"projects.30ohm.com/mrsaccess/bashistdb/llog"
@@ -20,6 +19,7 @@ var (
 	queryString  = flag.String("query", "", "SQL query to run")
 	serverMode   = flag.String("s", "", "server mode")
 	clientMode   = flag.String("r", "", "remote client mode")
+	passphrase   = flag.String("p", "qwerty", "passphrase to encrypt data with")
 )
 
 var (
@@ -29,13 +29,19 @@ var (
 	User     string
 	Hostname string
 	DbFile   string
+	Key      []byte
 )
 
 const (
 	SERVER = iota
 	CLIENT
 	QUERY
+	PRINT_VERSION
 )
+
+// You should end the string below with \n
+// Currently it is unused.
+const TRANSMISSION_END = "END_OF_TRANSMISSION…»»»…\n"
 
 func init() {
 	// Read flags and set user and hostname if not provided.
@@ -61,15 +67,13 @@ func init() {
 
 	Log.Info.Println("Welcome " + *user + "@" + *hostname + ".")
 
-	if *printVersion {
-		//	fmt.Println("bashistdb v" + version)
-		fmt.Println("https://github.com/andmarios/bashistdb")
-		os.Exit(0)
-	}
-
 	DbFile = *dbFile
 
+	Key = []byte(*passphrase)
+
 	switch {
+	case *printVersion:
+		Mode = PRINT_VERSION
 	case *serverMode != "":
 		Mode = SERVER
 		Address = *serverMode
