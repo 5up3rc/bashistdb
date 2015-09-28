@@ -67,17 +67,15 @@ func ServerMode() error {
 }
 
 func ClientMode() error {
+	conn, err := net.Dial("tcp", conf.Address)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+
 	stdinReader := bufio.NewReader(os.Stdin)
 	stats, _ := os.Stdin.Stat()
 	if (stats.Mode() & os.ModeCharDevice) != os.ModeCharDevice {
-		conn, err := net.Dial("tcp", conf.Address)
-		if err != nil {
-			return err
-		}
-		defer conn.Close()
-
-		// c := saltsecret.New([]byte("password"), true)
-
 		history, err := ioutil.ReadAll(stdinReader)
 		if err != nil {
 			return err
@@ -99,7 +97,24 @@ func ClientMode() error {
 		case RESULT:
 			fmt.Println(string(reply.Payload))
 		}
-		conn.Close()
+	} else {
+		msg := Message{QUERY, []byte{}, conf.User, conf.Hostname}
+
+		if err := encryptDispatch(conn, msg); err != nil {
+			return err
+		}
+
+		log.Info.Println("Queried.")
+
+		reply, err := receiveDecrypt(conn)
+		if err != nil {
+			return err
+		}
+
+		switch reply.Type {
+		case RESULT:
+			fmt.Println(string(reply.Payload))
+		}
 	}
 	return nil
 }
@@ -113,13 +128,25 @@ func handleConn(conn net.Conn) {
 		return
 	}
 
+	var result string
 	switch msg.Type {
 	case HISTORY:
 		r := bufio.NewReader(bytes.NewReader(msg.Payload))
 		db.AddFromBuffer(r, msg.User, msg.Hostname)
+		result = "Everything ok.\n"
+	case QUERY:
+		res1, err := db.Top20()
+		if err != nil {
+			log.Fatalln(err)
+		}
+		res2, err := db.Last20()
+		if err != nil {
+			log.Fatalln(err)
+		}
+		result = res1 + res2
 	}
 
-	reply := Message{RESULT, []byte("Everything ok.\n"), "", ""}
+	reply := Message{RESULT, []byte(result), "", ""}
 	if err := encryptDispatch(conn, reply); err != nil {
 		log.Println(err)
 	}
