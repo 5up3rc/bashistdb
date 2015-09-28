@@ -249,21 +249,25 @@ func (d Database) Last20() (result string, e error) {
 
 func (d Database) LogConn(remote net.Addr) (err error) {
 	t := time.Now()
-	_, err = d.Exec(`INSERT INTO connlog VALUES (?, ?, ?);`, t, remote.String(), nil)
-	// Perform a reverse lookup if needed.
-	go func() {
-		if ip, _, err := net.SplitHostPort(remote.String()); err == nil {
-			var rip string
-			err = d.QueryRow("SELECT ip FROM rlookup WHERE ip = ?", ip).Scan(&rip)
-			if err == sql.ErrNoRows {
-				if addr, err := net.LookupAddr(ip); err == nil {
-					_, _ = d.Exec(`INSERT INTO rlookup(ip, reverse)
+	// Find IP
+	if ip, _, err := net.SplitHostPort(remote.String()); err == nil {
+		// Store IP and datetim
+		_, err = d.Exec(`INSERT INTO connlog VALUES (?, ?);`, t, ip)
+		if err == nil {
+			// Perform a reverse lookup if needed.
+			go func() {
+				var rip string
+				err = d.QueryRow("SELECT ip FROM rlookup WHERE ip LIKE ?", ip).Scan(&rip)
+				if err == sql.ErrNoRows {
+					if addr, err := net.LookupAddr(ip); err == nil {
+						_, err = d.Exec(`INSERT INTO rlookup(ip, reverse)
                                                            VALUES(? ,?)`,
-						remote.String(), strings.Join(addr, ","))
+							ip, strings.Join(addr, ","))
+					}
 				}
-			}
+			}()
 		}
-	}()
+	}
 	return
 }
 
