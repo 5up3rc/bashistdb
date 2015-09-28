@@ -1,3 +1,20 @@
+// Copyright (c) 2015, Marios Andreopoulos.
+//
+// This file is part of bashistdb.
+//
+//      Bashistdb is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+//      Bashistdb is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+//      You should have received a copy of the GNU General Public License
+// along with bashistdb.  If not, see <http://www.gnu.org/licenses/>.
+
 // Package configuration handles the configuration of bashistdb.
 package configuration
 
@@ -94,12 +111,14 @@ func init() {
 
 	DbFile = *dbFile
 
-	if *passphrase == "" {
-		*passphrase = os.Getenv("BASHISTDB_KEY")
+	if Mode == SERVER || Mode == CLIENT {
+		if *passphrase == "" {
+			*passphrase = os.Getenv("BASHISTDB_KEY")
+			if *passphrase == "" {
+				log.Println("Using empty passphrase.")
+			}
+		}
+		Key = []byte(*passphrase)
 	}
-	if *passphrase == "" {
-		log.Println("Using empty passphrase.")
-	}
-	Key = []byte(*passphrase)
 
 }
