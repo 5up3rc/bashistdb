@@ -67,8 +67,17 @@ const (
 	FORMAT_TIMESTAMP    = "timestamp"
 	FORMAT_LOG          = "log"
 	FORMAT_JSON         = "json"
-	FORMAT_OP_DEFAULT   = FORMAT_COMMAND_LINE
+	FORMAT_DEFAULT      = FORMAT_COMMAND_LINE
 )
+
+var availableFormats = map[string]bool{
+	FORMAT_BASH_HISTORY: true,
+	FORMAT_ALL:          true,
+	FORMAT_COMMAND_LINE: true,
+	FORMAT_TIMESTAMP:    true,
+	FORMAT_LOG:          true,
+	FORMAT_JSON:         true,
+}
 
 // Run Modes
 const (
@@ -133,8 +142,8 @@ func init() {
 	flag.StringVar(&passphrase, "k", "", "Shorthand for -key")
 	flag.StringVar(&passphrase, "key", "",
 		"Passphrase to use for creating keys for network communication encryption.")
-	flag.StringVar(&format, "f", FORMAT_OP_DEFAULT, "Shorthand for -format")
-	flag.StringVar(&format, "format", FORMAT_OP_DEFAULT,
+	flag.StringVar(&format, "f", FORMAT_DEFAULT, "Shorthand for -format")
+	flag.StringVar(&format, "format", FORMAT_DEFAULT,
 		"How to format query output. Available types are:\n        "+
 			FORMAT_ALL+", "+
 			FORMAT_BASH_HISTORY+", "+
@@ -192,6 +201,12 @@ Available options:`)
 	switch {
 	case len(flag.Args()) > 0:
 		Operation = OP_QUERY
+		if availableFormats[format] {
+			Format = format
+		} else {
+			Log.Info.Println("The specified format doesn't exist. Reverting to default:", FORMAT_DEFAULT)
+			Format = FORMAT_DEFAULT
+		}
 	default:
 		Operation = OP_DEFAULT
 	}

@@ -33,7 +33,7 @@ const (
 	FORMAT_ALL_S          = "%05d | %s | % 10s | % 10s | %s"
 	FORMAT_COMMAND_LINE_S = "%s"
 	FORMAT_TIMESTAMP_S    = "%s: %s"
-	FORMAT_LOG_S          = "%s, %s@%s, %s"
+	FORMAT_LOG_S          = "%s %s@%s %s"
 	FORMAT_JSON_S         = "" // We use encoding/json for JSON
 )
 
@@ -42,7 +42,7 @@ const (
 // requested output format.
 type Result struct {
 	out     *bytes.Buffer
-	written bool // we use this to work around json not accepting a trailing comma
+	written *bool // we use this to work around json not accepting a trailing comma
 }
 
 // New returns a new Result
@@ -51,7 +51,8 @@ func New() *Result {
 	if conf.Format == conf.FORMAT_JSON {
 		out.WriteString("[\n")
 	}
-	return &Result{&out, false}
+	w := false
+	return &Result{&out, &w}
 }
 
 // A rowJson is an internal struct to use with json.Marshal
@@ -64,6 +65,17 @@ type rowJson struct {
 func (r Result) AddRow(row int, datetime time.Time, user, host string, command string) {
 	var f string
 
+	switch *r.written {
+	case true:
+		if conf.Format != conf.FORMAT_JSON {
+			_ = r.out.WriteByte('\n')
+		} else {
+			_, _ = r.out.WriteString(",\n")
+		}
+	default:
+		*r.written = true
+	}
+
 	switch conf.Format {
 	case conf.FORMAT_ALL:
 		f = fmt.Sprintf(FORMAT_ALL_S, row, datetime, user, host, command)
@@ -74,11 +86,7 @@ func (r Result) AddRow(row int, datetime time.Time, user, host string, command s
 	case conf.FORMAT_LOG:
 		f = fmt.Sprintf(FORMAT_LOG_S, datetime, user, host, command)
 	case conf.FORMAT_JSON:
-		if r.written {
-			_ = r.out.WriteByte(',')
-		}
-		r.written = true
-		b, _ := json.Marshal(rowJson{row, datetime.Format("RFC3339"), user, host, command})
+		b, _ := json.Marshal(rowJson{row, datetime.Format(time.RFC3339), user, host, command})
 		_, _ = r.out.Write(b)
 		f = ""
 	case conf.FORMAT_COMMAND_LINE:
@@ -87,13 +95,13 @@ func (r Result) AddRow(row int, datetime time.Time, user, host string, command s
 		f = fmt.Sprintf(FORMAT_COMMAND_LINE_S, command)
 
 	}
-	r.out.WriteString(f + "\n")
+	r.out.WriteString(f)
 }
 
 // Formatted returns the result in the desired format after performing any necessary adjustment.
 func (r Result) Formatted() []byte {
 	if conf.Format == conf.FORMAT_JSON {
-		r.out.WriteByte(']')
+		r.out.WriteString("\n]")
 	}
 	return r.out.Bytes()
 }

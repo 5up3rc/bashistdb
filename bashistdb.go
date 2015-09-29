@@ -19,7 +19,6 @@ package main
 
 import (
 	"fmt"
-	"os"
 
 	conf "projects.30ohm.com/mrsaccess/bashistdb/configuration"
 	"projects.30ohm.com/mrsaccess/bashistdb/llog"
@@ -36,17 +35,14 @@ func main() {
 	case conf.MODE_PRINT_VERSION:
 		fmt.Println("bashistdb v" + version)
 		fmt.Println("https://github.com/andmarios/bashistdb")
-		os.Exit(0)
 	case conf.MODE_SERVER:
 		if err := network.ServerMode(); err != nil {
 			log.Fatalln(err)
 		}
-		os.Exit(0)
 	case conf.MODE_CLIENT:
 		if err := network.ClientMode(); err != nil {
 			log.Fatalln(err)
 		}
-		os.Exit(0)
 	case conf.MODE_LOCAL:
 		if err := local.Run(); err != nil {
 			log.Fatalln(err)

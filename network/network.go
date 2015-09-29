@@ -50,6 +50,7 @@ type Message struct {
 	User     string
 	Hostname string
 	Query    string
+	Format   string
 }
 
 var log *llog.Logger
@@ -130,7 +131,7 @@ func ClientMode() error {
 	case conf.OP_DEFAULT:
 		msg = Message{Type: DEFAULT, User: conf.User, Hostname: conf.Hostname}
 	case conf.OP_QUERY:
-		msg = Message{Type: QUERY, User: conf.User, Hostname: conf.Hostname, Query: conf.Query}
+		msg = Message{Type: QUERY, User: conf.User, Hostname: conf.Hostname, Query: conf.Query, Format: conf.Format}
 	default:
 		return errors.New("unknown function")
 	}
@@ -181,6 +182,7 @@ func handleConn(conn net.Conn) {
 		}
 		result = []byte(res1 + res2)
 	case QUERY:
+		conf.Format = msg.Format
 		result, err = db.RunQuery(msg.User, msg.Hostname, msg.Query)
 		if err != nil {
 			log.Fatalln(err)
