@@ -43,15 +43,19 @@ var (
 		"Optional user name to use instead of reading $USER variable.\n"+
 			"        In query operations, it doubles as search term for the username. It accepts\n"+
 			"        SQLite wildcard operators: percent (%) for asterisk (*) and underscore (_)\n"+
-			"        for question mark (?).\n"+
-			"       ")
-	hostname = flag.String("hostname", hostDefault,
+			`        for question mark (?). You may use backslash (\) to escape.`+
+			"\n       ")
+	hostname = flag.String("host", hostDefault,
 		"Optional hostname to use instead of reading it from the system.\n"+
 			"        In query operations, it doubles as search term for the hostname. It accepts\n"+
 			"        SQLite wildcard operators: percent (%) for asterisk (*) and underscore (_)\n"+
-			"        for question mark (?).\n"+
-			"       ")
-	//	queryString  = flag.String("query", "", "SQL query to run")
+			`        for question mark (?). You may use backslash (\) to escape.`+
+			"\n       ")
+	command = flag.String("command", "%",
+		"In query operations, it acts as search term for the command line.\n"+
+			"        It accepts SQLite wildcard operators: percent (%) for asterisk (*) and\n"+
+			`         underscore (_) for question mark (?). You may use backslash (\) to escape.`+
+			"\n       ")
 	serverMode = flag.Bool("s", false,
 		"Run in (network) server mode. Bashistdb currently binds to 0.0.0.0.")
 	clientMode = flag.String("c", "",
@@ -67,12 +71,13 @@ var (
 )
 
 var (
-	Mode      int // mode of operation (local, server, client, etc)
+	Mode      int // Mode of operation (local, server, client, etc)
 	Operation int // function (read, restore, et)
 	Log       *llog.Logger
 	Address   string
 	User      string
 	Hostname  string
+	Command   string
 	DbFile    string
 	Key       []byte
 )
@@ -170,6 +175,8 @@ func init() {
 		}
 	}
 	Hostname = *hostname
+
+	Command = *command
 
 	Log.Info.Println("Welcome " + User + "@" + Hostname + ".")
 

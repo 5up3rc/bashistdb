@@ -351,7 +351,7 @@ func migrate(d *sql.DB) error {
 
 // Restore returns history within the search criteria in timestamped bash_history format
 func (d Database) Restore(user, hostname string) (string, error) {
-	rows, err := d.Query(`SELECT datetime, command FROM history WHERE user LIKE ? AND host LIKE ?`,
+	rows, err := d.Query(`SELECT datetime, command FROM history WHERE user LIKE ? AND host LIKE ? ESCAPE '\'`,
 		user, hostname)
 	if err != nil {
 		return "", err
