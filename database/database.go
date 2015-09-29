@@ -124,7 +124,7 @@ func initDB(db *sql.DB) error {
                          SELECT datetime, remote, reverse
                            FROM connlog AS c
                              JOIN rlookup AS r
-                               ON c.remote=d.ip;`
+                               ON c.remote=r.ip;`
 
 	if _, err := db.Exec(stmt); err != nil {
 		return err
@@ -328,7 +328,7 @@ func upgradeIfNeed(d *sql.DB) error {
 // Restore returns history within the search criteria in timestamped bash_history format
 func (d Database) Restore(user, hostname string) (string, error) {
 	rows, err := d.Query(`SELECT datetime, command FROM history WHERE user LIKE ? AND host LIKE ?`,
-		"%"+user+"%", "%"+hostname+"%")
+		user, hostname)
 	if err != nil {
 		return "", err
 	}

@@ -41,13 +41,15 @@ var (
 			"        Server mode will set it to 1 if left 0.")
 	user = flag.String("user", userDefault,
 		"Optional user name to use instead of reading $USER variable.\n"+
-			"        In query operations, it doubles as search term for username. Think of\n"+
-			"        it as wildcard surrounded: *<USER>*. Use percent (%) to match all.\n"+
+			"        In query operations, it doubles as search term for the username. It accepts\n"+
+			"        SQLite wildcard operators: percent (%) for asterisk (*) and underscore (_)\n"+
+			"        for question mark (?).\n"+
 			"       ")
 	hostname = flag.String("hostname", hostDefault,
 		"Optional hostname to use instead of reading it from the system.\n"+
-			"        In query operations, it doubles as search term for hostname. Think of\n"+
-			"        it as wildcard surrounded: *<HOST>*. Use percent (%) to match all.\n"+
+			"        In query operations, it doubles as search term for the hostname. It accepts\n"+
+			"        SQLite wildcard operators: percent (%) for asterisk (*) and underscore (_)\n"+
+			"        for question mark (?).\n"+
 			"       ")
 	//	queryString  = flag.String("query", "", "SQL query to run")
 	serverMode = flag.Bool("s", false,
