@@ -42,8 +42,12 @@ import (
 // Golang's RFC3339 does not comply with all RFC3339 representations
 const RFC3339alt = "2006-01-02T15:04:05-0700"
 
+// VERSION is the database's schema supported version.
+// If your database is older it will be automatically migrated.
+// If it is newer you have to update your bashistdb copy.
 const VERSION = "2"
 
+// A Database holds a bashistdb database.
 type Database struct {
 	*sql.DB
 	statements
@@ -59,6 +63,10 @@ func init() {
 	log = conf.Log
 }
 
+// New returns a new Database instance. It gets the filename for the
+// database from the configuration package. If the file does not exist,
+// it creates a new database. If it exists, it migrates it if it has an
+// older schema version than current.
 func New() (Database, error) {
 	// If database file does not exist, set a flag to create file and table.
 	init := false
@@ -75,18 +83,19 @@ func New() (Database, error) {
 		return Database{}, err
 	}
 	// If database is new, initialize it with our tables.
+	// Else migrate it if needed.
 	if init {
 		if err = initDB(db); err != nil {
 			_ = db.Close()
 			return Database{}, err
 		}
 	} else {
-		err := upgradeIfNeed(db)
+		err := migrate(db)
 		if err != nil {
 			return Database{}, err
 		}
 	}
-	// Prepare various statements
+	// Prepare various statements that may be used frequently.
 	errs := make([]error, 5)
 	var insert *sql.Stmt
 	insert, errs[0] = db.Prepare("INSERT INTO history(user, host, command, datetime) VALUES(?, ?, ?, ?)")
@@ -140,6 +149,7 @@ func initDB(db *sql.DB) error {
 
 // AddRecord tries to insert a new record in the database,
 // if the record already exists, it updates the count
+// Note: function isn't used anywhere, may need testing if used.
 func (d Database) AddRecord(user, host, command string, time time.Time) error {
 	// Try to insert row
 	_, err := d.insert.Exec(user, host, command, time)
@@ -160,7 +170,14 @@ func (d Database) AddRecord(user, host, command string, time time.Time) error {
 	return nil
 }
 
-func (d Database) AddFromBuffer(r *bufio.Reader, user, host string) error {
+// AddFromBuffer reads from a buffered Reader and scans for lines that match
+// history command's structure:
+//     LINENUM RFC3339_DATETIME COMMAND
+// Upon succesful encounter it tries to store it to the database. It counts
+// total lines read and lines failed to insert into the database —usually
+// because they already exist. It reports the results in a sentence (stats
+// string) because we don't anything fancier currently.
+func (d Database) AddFromBuffer(r *bufio.Reader, user, host string) (stats string, e error) {
 	//                                  LINENUM        DATETIME         CM
 	parseLine := regexp.MustCompile(`^ *[0-9]+\*? *([0-9T:+-]{24,24}) *(.*)`)
 	tx, _ := d.Begin()
@@ -173,7 +190,7 @@ func (d Database) AddFromBuffer(r *bufio.Reader, user, host string) error {
 			if err == io.EOF {
 				break
 			} else {
-				return err
+				return "", errors.New("Error while reading stdin: " + err.Error())
 			}
 		}
 		// if historyLine == conf.TRANSMISSION_END {
@@ -188,7 +205,7 @@ func (d Database) AddFromBuffer(r *bufio.Reader, user, host string) error {
 		time, err := time.Parse(RFC3339alt, args[1])
 		if err != nil {
 			tx.Rollback()
-			return err
+			return "", err
 		}
 
 		_, err = stmt.Exec(user, host, strings.TrimSuffix(args[2], "\n"), time)
@@ -202,22 +219,23 @@ func (d Database) AddFromBuffer(r *bufio.Reader, user, host string) error {
 					failed++
 				} else {
 					tx.Rollback()
-					return err
+					return "", err
 				}
 			} else { // Normally we can never reach this. Should we omit it?
-				return err
+				return "", err
 			}
 		}
 	}
 	tx.Commit()
 	total--
-	log.Info.Printf("Processed %d entries, successful %d, failed %d.\n", total, total-failed, failed)
-	return nil
+	stats = fmt.Sprintf("Processed %d entries, successful %d, failed %d.", total, total-failed, failed)
+	return stats, nil
 }
 
-func (d Database) Top20() (result string, e error) {
-	result = fmt.Sprintln("Top-20 commands:")
-	rows, e := d.Query("SELECT command, count(*) as count FROM history GROUP BY command ORDER BY count DESC LIMIT 20")
+// TopK returns the k most frequent command lines in history
+func (d Database) TopK(k int) (result string, e error) {
+	result = fmt.Sprintf("Top-%d commands:", k)
+	rows, e := d.Query("SELECT command, count(*) as count FROM history GROUP BY command ORDER BY count DESC LIMIT ?", k)
 	if e != nil {
 		return result, e
 	}
@@ -226,14 +244,15 @@ func (d Database) Top20() (result string, e error) {
 		var command string
 		var count int
 		rows.Scan(&command, &count)
-		result += fmt.Sprintf("%d: %s\n", count, command)
+		result += fmt.Sprintf("\n%d: %s", count, command)
 	}
 	return result, e
 }
 
-func (d Database) Last20() (result string, e error) {
-	result = fmt.Sprintln("Last 10 commands:")
-	rows, e := d.Query("SELECT  datetime, command FROM history ORDER BY datetime DESC LIMIT 10")
+// LastK returns the k most recent command lines in history
+func (d Database) LastK(k int) (result string, e error) {
+	result = fmt.Sprintf("Last %d commands:", k)
+	rows, e := d.Query("SELECT  datetime, command FROM history ORDER BY datetime DESC LIMIT ?", k)
 	if e != nil {
 		return result, nil
 	}
@@ -242,11 +261,14 @@ func (d Database) Last20() (result string, e error) {
 		var command string
 		var time time.Time
 		rows.Scan(&time, &command)
-		result += fmt.Sprintf("%s %s\n", time, command)
+		result += fmt.Sprintf("\n%s %s", time, command)
 	}
 	return result, e
 }
 
+// LogConn logs the remote's IP address and connection time into connlog table.
+// Also if it can find a reverse lookup for the IP address inside table rlookup,
+// it performs it asynchronously. Reverse lookup may fail, but we don't care.
 func (d Database) LogConn(remote net.Addr) (err error) {
 	t := time.Now()
 	// Find IP
@@ -274,7 +296,9 @@ func (d Database) LogConn(remote net.Addr) (err error) {
 	return
 }
 
-func upgradeIfNeed(d *sql.DB) error {
+// migrate is a unexported function that handles database migrations.
+// It is safe to run on databases that already are on latest version.
+func migrate(d *sql.DB) error {
 	var version string
 	err := d.QueryRow(`SELECT value FROM admin WHERE key LIKE "version"`).Scan(&version)
 	if err != nil {
@@ -341,5 +365,6 @@ func (d Database) Restore(user, hostname string) (string, error) {
 		rows.Scan(&t, &command)
 		result.WriteString(fmt.Sprintf("#%d\n%s\n", t.Unix(), command))
 	}
-	return result.String(), nil
+	// Return the result without the newline at the end.
+	return strings.TrimSuffix(result.String(), "\n"), nil
 }

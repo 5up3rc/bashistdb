@@ -26,21 +26,22 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net"
-	"os"
 
 	"github.com/andmarios/crypto/nacl/saltsecret"
 
 	conf "projects.30ohm.com/mrsaccess/bashistdb/configuration"
 	"projects.30ohm.com/mrsaccess/bashistdb/database"
 	"projects.30ohm.com/mrsaccess/bashistdb/llog"
+	"projects.30ohm.com/mrsaccess/bashistdb/local"
 )
 
+// Message Types
 const (
 	_ = iota
 	RESULT
 	HISTORY
-	OP_DEFAULT
-	OP_QUERY
+	DEFAULT
+	QUERY
 )
 
 type Message struct {
@@ -94,10 +95,9 @@ func ClientMode() error {
 
 	// If Operation == OP_DEFAULT, attempt to read from Stdin
 	if conf.Operation == conf.OP_DEFAULT {
-		stdinReader := bufio.NewReader(os.Stdin)
-		stats, _ := os.Stdin.Stat()
-		if (stats.Mode() & os.ModeCharDevice) != os.ModeCharDevice {
-			history, err := ioutil.ReadAll(stdinReader)
+		r, err := local.GetStdin()
+		if err == nil {
+			history, err := ioutil.ReadAll(r)
 			if err != nil {
 				return err
 			}
@@ -114,6 +114,7 @@ func ClientMode() error {
 			if err != nil {
 				return err
 			}
+
 			switch reply.Type {
 			case RESULT:
 				log.Info.Println("Received:", string(reply.Payload))
@@ -126,9 +127,9 @@ func ClientMode() error {
 	var msg Message
 	switch conf.Operation {
 	case conf.OP_DEFAULT:
-		msg = Message{Type: OP_DEFAULT, User: conf.User, Hostname: conf.Hostname}
+		msg = Message{Type: DEFAULT, User: conf.User, Hostname: conf.Hostname}
 	case conf.OP_QUERY:
-		msg = Message{Type: OP_QUERY, User: conf.User, Hostname: conf.Hostname}
+		msg = Message{Type: QUERY, User: conf.User, Hostname: conf.Hostname}
 	default:
 		return errors.New("unknown function")
 	}
@@ -162,19 +163,18 @@ func handleConn(conn net.Conn) {
 	switch msg.Type {
 	case HISTORY:
 		r := bufio.NewReader(bytes.NewReader(msg.Payload))
-		db.AddFromBuffer(r, msg.User, msg.Hostname)
-		result = "Everything ok.\n"
-	case OP_DEFAULT:
-		res1, err := db.Top20()
+		result, err = db.AddFromBuffer(r, msg.User, msg.Hostname)
+	case DEFAULT:
+		res1, err := db.TopK(20)
 		if err != nil {
 			log.Fatalln(err)
 		}
-		res2, err := db.Last20()
+		res2, err := db.LastK(10)
 		if err != nil {
 			log.Fatalln(err)
 		}
 		result = res1 + res2
-	case OP_QUERY:
+	case QUERY:
 		result, err = db.Restore(msg.User, msg.Hostname)
 		if err != nil {
 			log.Fatalln(err)
@@ -191,7 +191,7 @@ func encryptDispatch(conn net.Conn, m Message) error {
 	// We want to sent encrypted data.
 	// In order to encrypt, we need to first serialize the message.
 	// In order to sent/receive hassle free, we need to serialize the encrypted message
-	// So: msg -> GOB -> ENCRYPT -> GOB -> (dispatch)
+	// So: msg -> [GOB] -> [ENCRYPT] -> [GOB] -> (dispatch)
 
 	// Create encrypter
 	var encMsg bytes.Buffer
@@ -221,7 +221,8 @@ func encryptDispatch(conn net.Conn, m Message) error {
 }
 
 func receiveDecrypt(conn net.Conn) (Message, error) {
-	// (incoming data) -> de-GOB -> DECRYPT -> de-GOB -> msg
+	// Our work is:
+	// (receive) -> [de-GOB] -> [DECRYPT] -> [de-GOB] -> msg
 
 	// Receive data and de-serialize to get the encrypted message
 	encMsg := &[]byte{}

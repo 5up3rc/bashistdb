@@ -26,7 +26,10 @@ import (
 
 	conf "projects.30ohm.com/mrsaccess/bashistdb/configuration"
 	"projects.30ohm.com/mrsaccess/bashistdb/database"
+	"projects.30ohm.com/mrsaccess/bashistdb/llog"
 )
+
+var log *llog.Logger
 
 func Run() error {
 	db, err := database.New()
@@ -35,22 +38,27 @@ func Run() error {
 	}
 	defer db.Close()
 
+	log = conf.Log
+
 	switch conf.Operation {
 	case conf.OP_DEFAULT:
-		stdinReader := bufio.NewReader(os.Stdin)
-		stats, _ := os.Stdin.Stat()
-		if (stats.Mode() & os.ModeCharDevice) != os.ModeCharDevice {
-			err = db.AddFromBuffer(stdinReader, conf.User, conf.Hostname)
+		r, err := GetStdin()
+		if err == nil {
+			stats, err := db.AddFromBuffer(r, conf.User, conf.Hostname)
 			if err != nil {
-				return errors.New("Error while processing stdin: " + err.Error())
+				return errors.New("Error while processing stdin: " +
+					err.Error())
 			}
+			// We print to log because we usually want this to be quiet
+			// as we may run it every time we hit ENTER in a bash prompt.
+			log.Info.Println(stats)
 		} else {
-			res, err := db.Top20()
+			res, err := db.TopK(20)
 			if err != nil {
 				return err
 			}
 			fmt.Println(res)
-			res, err = db.Last20()
+			res, err = db.LastK(10)
 			if err != nil {
 				return err
 			}
@@ -64,4 +72,16 @@ func Run() error {
 		fmt.Println(res)
 	}
 	return nil
+}
+
+// GetStdin checks if stdin is a unix character device,
+// that is if data is piped in to us. If yes it returns
+// a reader for stdin, else it returns an error.
+func GetStdin() (r *bufio.Reader, e error) {
+	r = bufio.NewReader(os.Stdin)
+	stats, _ := os.Stdin.Stat()
+	if (stats.Mode() & os.ModeCharDevice) != os.ModeCharDevice {
+		return r, nil
+	}
+	return r, errors.New("Stdin is not character device.")
 }
