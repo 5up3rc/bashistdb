@@ -35,8 +35,8 @@ func Run() error {
 	}
 	defer db.Close()
 
-	switch conf.Function {
-	case conf.DEFAULT:
+	switch conf.Operation {
+	case conf.OP_DEFAULT:
 		stdinReader := bufio.NewReader(os.Stdin)
 		stats, _ := os.Stdin.Stat()
 		if (stats.Mode() & os.ModeCharDevice) != os.ModeCharDevice {
@@ -56,7 +56,7 @@ func Run() error {
 			}
 			fmt.Println(res)
 		}
-	case conf.RESTORE:
+	case conf.OP_QUERY:
 		res, err := db.Restore(conf.User, conf.Hostname)
 		if err != nil {
 			return err

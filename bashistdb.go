@@ -33,21 +33,21 @@ func main() {
 	log = conf.Log
 
 	switch conf.Mode {
-	case conf.PRINT_VERSION:
+	case conf.MODE_PRINT_VERSION:
 		fmt.Println("bashistdb v" + version)
 		fmt.Println("https://github.com/andmarios/bashistdb")
 		os.Exit(0)
-	case conf.SERVER:
+	case conf.MODE_SERVER:
 		if err := network.ServerMode(); err != nil {
 			log.Fatalln(err)
 		}
 		os.Exit(0)
-	case conf.CLIENT:
+	case conf.MODE_CLIENT:
 		if err := network.ClientMode(); err != nil {
 			log.Fatalln(err)
 		}
 		os.Exit(0)
-	case conf.LOCAL:
+	case conf.MODE_LOCAL:
 		if err := local.Run(); err != nil {
 			log.Fatalln(err)
 		}

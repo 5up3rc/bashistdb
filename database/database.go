@@ -265,6 +265,9 @@ func (d Database) LogConn(remote net.Addr) (err error) {
 							ip, strings.Join(addr, ","))
 					}
 				}
+				if err != nil {
+					log.Info.Println(err)
+				}
 			}()
 		}
 	}

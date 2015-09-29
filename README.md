@@ -89,6 +89,11 @@ some stats from server:
     $ export BASHISTDB_KEY=passphrase
     $ bashistdb -c <SERVER>
 
+If you want to sent your history at the server as it happens, you better
+start bashistdb client in the background in order to avoid delays:
+
+    $ export PROMPT_COMMAND="${PROMPT_COMMAND}; (history 1 | bashistdb -c <SERVER> -p passphrase &)"
+
 Messages are encrypted using NaCl secret-key authenticated encryption and
 scrypt key derivation.
 Check <https://github.com/andmarios/crypto/nacl/saltsecret> if you are

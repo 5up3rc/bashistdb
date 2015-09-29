@@ -43,30 +43,49 @@ var (
 )
 
 var (
-	Mode     int // mode of operation (local, server, client, etc)
-	Function int // function (read, restore, et)
-	Log      *llog.Logger
-	Address  string
-	User     string
-	Hostname string
-	DbFile   string
-	Key      []byte
+	Mode      int // mode of operation (local, server, client, etc)
+	Operation int // function (read, restore, et)
+	Log       *llog.Logger
+	Address   string
+	User      string
+	Hostname  string
+	DbFile    string
+	Key       []byte
+)
+
+// Output Formats
+const (
+	FORMAT_BASH_HISTORY = "restore"
+	FORMAT_ALL          = "all"
+	FORMAT_COMMAND      = "command"
+	FORMAT_TIMESTAMP    = "timestamp"
+	FORMAT_LOG          = "log"
+	FORMAT_OP_DEFAULT   = FORMAT_COMMAND
+)
+
+// Format Strings
+const (
+	FORMAT_BASH_HISTORY_S = "#%d\n%s\n"
+	FORMAT_ALL_S          = "%05d | %s | % 10s | % 10s | %s\n"
+	FORMAT_COMMAND_S      = "%s\n"
+	FORMAT_TIMESTAMP_S    = "%s: %s\n"
+	FORMAT_LOG_S          = "%s, %s@%s, %s\n"
 )
 
 // Modes
 const (
 	_ = iota
-	SERVER
-	CLIENT
-	LOCAL
-	PRINT_VERSION // version flag overrides anything else
+	MODE_SERVER
+	MODE_CLIENT
+	MODE_LOCAL
+	MODE_PRINT_VERSION // version flag overrides anything else
 )
 
-// Functions
+// Operations
 const (
-	_       = iota
-	DEFAULT // Default tries to read from stdin or print some stats if it can't
-	RESTORE
+	_          = iota
+	OP_DEFAULT // Default tries to read from stdin or print some stats if it can't
+	OP_QUERY
 )
 
 // Currently TRANSMISSION_END is unused.
@@ -80,9 +99,9 @@ func init() {
 	// Determine mode of operation
 	switch {
 	case *printVersion:
-		Mode = PRINT_VERSION
+		Mode = MODE_PRINT_VERSION
 	case *serverMode:
-		Mode = SERVER
+		Mode = MODE_SERVER
 		Address = ":" + *port
 		if *clientMode != "" {
 			fmt.Println("Incompatible options: server and client.")
@@ -90,20 +109,20 @@ func init() {
 			os.Exit(1)
 		}
 	case *clientMode != "":
-		Mode = CLIENT
+		Mode = MODE_CLIENT
 		Address = *clientMode + ":" + *port
 	default:
-		Mode = LOCAL
+		Mode = MODE_LOCAL
 	}
 
 	switch {
 	case *restore:
-		Function = RESTORE
+		Operation = OP_QUERY
 	default:
-		Function = DEFAULT
+		Operation = OP_DEFAULT
 	}
 
-	if Mode == SERVER && Function != DEFAULT {
+	if Mode == MODE_SERVER && Operation != OP_DEFAULT {
 		fmt.Println("Incompatible options: asked for server mode and other functions.")
 		flag.PrintDefaults()
 		os.Exit(1)
@@ -135,7 +154,7 @@ func init() {
 
 	DbFile = *dbFile
 
-	if Mode == SERVER || Mode == CLIENT {
+	if Mode == MODE_SERVER || Mode == MODE_CLIENT {
 		if *passphrase == "" {
 			*passphrase = os.Getenv("BASHISTDB_KEY")
 			if *passphrase == "" {

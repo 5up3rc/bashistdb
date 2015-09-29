@@ -39,8 +39,8 @@ const (
 	_ = iota
 	RESULT
 	HISTORY
-	DEFAULT
-	RESTORE
+	OP_DEFAULT
+	OP_QUERY
 )
 
 type Message struct {
@@ -92,8 +92,8 @@ func ClientMode() error {
 	}
 	defer conn.Close()
 
-	// If Function == DEFAULT, attempt to read from Stdin
-	if conf.Function == conf.DEFAULT {
+	// If Operation == OP_DEFAULT, attempt to read from Stdin
+	if conf.Operation == conf.OP_DEFAULT {
 		stdinReader := bufio.NewReader(os.Stdin)
 		stats, _ := os.Stdin.Stat()
 		if (stats.Mode() & os.ModeCharDevice) != os.ModeCharDevice {
@@ -124,11 +124,11 @@ func ClientMode() error {
 
 	// Not Stdin or other function? Switch.
 	var msg Message
-	switch conf.Function {
-	case conf.DEFAULT:
-		msg = Message{Type: DEFAULT, User: conf.User, Hostname: conf.Hostname}
-	case conf.RESTORE:
-		msg = Message{Type: RESTORE, User: conf.User, Hostname: conf.Hostname}
+	switch conf.Operation {
+	case conf.OP_DEFAULT:
+		msg = Message{Type: OP_DEFAULT, User: conf.User, Hostname: conf.Hostname}
+	case conf.OP_QUERY:
+		msg = Message{Type: OP_QUERY, User: conf.User, Hostname: conf.Hostname}
 	default:
 		return errors.New("unknown function")
 	}
@@ -164,7 +164,7 @@ func handleConn(conn net.Conn) {
 		r := bufio.NewReader(bytes.NewReader(msg.Payload))
 		db.AddFromBuffer(r, msg.User, msg.Hostname)
 		result = "Everything ok.\n"
-	case DEFAULT:
+	case OP_DEFAULT:
 		res1, err := db.Top20()
 		if err != nil {
 			log.Fatalln(err)
@@ -174,7 +174,7 @@ func handleConn(conn net.Conn) {
 			log.Fatalln(err)
 		}
 		result = res1 + res2
-	case RESTORE:
+	case OP_QUERY:
 		result, err = db.Restore(msg.User, msg.Hostname)
 		if err != nil {
 			log.Fatalln(err)

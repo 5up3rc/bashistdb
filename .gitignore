@@ -3,3 +3,5 @@
 *.sqlite
 bashistdb
 .bash_history
+BASH_HISTORY
+*.db
