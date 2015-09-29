@@ -65,11 +65,11 @@ func Run() error {
 			fmt.Println(res)
 		}
 	case conf.OP_QUERY:
-		res, err := db.Restore(conf.User, conf.Hostname)
+		res, err := db.RunQuery(conf.User, conf.Hostname, conf.Query)
 		if err != nil {
 			return err
 		}
-		fmt.Println(res)
+		fmt.Println(string(res))
 	}
 	return nil
 }

@@ -31,7 +31,7 @@ import (
 const (
 	FORMAT_BASH_HISTORY_S = "#%d\n%s"
 	FORMAT_ALL_S          = "%05d | %s | % 10s | % 10s | %s"
-	FORMAT_COMMAND_S      = "%s"
+	FORMAT_COMMAND_LINE_S = "%s"
 	FORMAT_TIMESTAMP_S    = "%s: %s"
 	FORMAT_LOG_S          = "%s, %s@%s, %s"
 	FORMAT_JSON_S         = "" // We use encoding/json for JSON
@@ -41,7 +41,7 @@ const (
 // Result's methods are responsible for formatting according to
 // requested output format.
 type Result struct {
-	out     bytes.Buffer
+	out     *bytes.Buffer
 	written bool // we use this to work around json not accepting a trailing comma
 }
 
@@ -51,7 +51,7 @@ func New() *Result {
 	if conf.Format == conf.FORMAT_JSON {
 		out.WriteString("[\n")
 	}
-	return &Result{out, false}
+	return &Result{&out, false}
 }
 
 // A rowJson is an internal struct to use with json.Marshal
@@ -61,7 +61,7 @@ type rowJson struct {
 }
 
 // AddRow adds a query row to a Result struct. This function is not thread safe!
-func (r Result) AddRow(row int, user, host string, datetime time.Time, command string) {
+func (r Result) AddRow(row int, datetime time.Time, user, host string, command string) {
 	var f string
 
 	switch conf.Format {
@@ -81,10 +81,10 @@ func (r Result) AddRow(row int, user, host string, datetime time.Time, command s
 		b, _ := json.Marshal(rowJson{row, datetime.Format("RFC3339"), user, host, command})
 		_, _ = r.out.Write(b)
 		f = ""
-	case conf.FORMAT_COMMAND:
+	case conf.FORMAT_COMMAND_LINE:
 		fallthrough
 	default:
-		f = fmt.Sprintf(FORMAT_COMMAND_S, command)
+		f = fmt.Sprintf(FORMAT_COMMAND_LINE_S, command)
 
 	}
 	r.out.WriteString(f + "\n")

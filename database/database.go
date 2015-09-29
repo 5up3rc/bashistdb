@@ -23,7 +23,6 @@ package database
 
 import (
 	"bufio"
-	"bytes"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -37,6 +36,7 @@ import (
 	"github.com/mattn/go-sqlite3"
 	conf "projects.30ohm.com/mrsaccess/bashistdb/configuration"
 	"projects.30ohm.com/mrsaccess/bashistdb/llog"
+	"projects.30ohm.com/mrsaccess/bashistdb/result"
 )
 
 // Golang's RFC3339 does not comply with all RFC3339 representations
@@ -349,22 +349,23 @@ func migrate(d *sql.DB) error {
 	return nil
 }
 
-// Restore returns history within the search criteria in timestamped bash_history format
-func (d Database) Restore(user, hostname string) (string, error) {
-	rows, err := d.Query(`SELECT datetime, command FROM history WHERE user LIKE ? AND host LIKE ? ESCAPE '\'`,
-		user, hostname)
+// RunQuery returns history within the search criteria in timestamped bash_history format
+func (d Database) RunQuery(user, hostname, query string) ([]byte, error) {
+	rows, err := d.Query(`SELECT rowid, datetime, user, host, command FROM history WHERE user LIKE ? AND host LIKE ? AND command LIKE ? ESCAPE '\'`,
+		user, hostname, query)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	defer rows.Close()
 
-	var result bytes.Buffer
+	res := result.New()
 	for rows.Next() {
-		var command string
+		var user, host, command string
 		var t time.Time
-		rows.Scan(&t, &command)
-		result.WriteString(fmt.Sprintf("#%d\n%s\n", t.Unix(), command))
+		var row int
+		rows.Scan(&row, &t, &user, &host, &command)
+		res.AddRow(row, t, user, host, command)
 	}
 	// Return the result without the newline at the end.
-	return strings.TrimSuffix(result.String(), "\n"), nil
+	return res.Formatted(), nil
 }

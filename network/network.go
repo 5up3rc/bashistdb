@@ -49,6 +49,7 @@ type Message struct {
 	Payload  []byte
 	User     string
 	Hostname string
+	Query    string
 }
 
 var log *llog.Logger
@@ -102,7 +103,7 @@ func ClientMode() error {
 				return err
 			}
 
-			msg := Message{HISTORY, history, conf.User, conf.Hostname}
+			msg := Message{Type: HISTORY, Payload: history, User: conf.User, Hostname: conf.Hostname}
 
 			if err := encryptDispatch(conn, msg); err != nil {
 				return err
@@ -123,13 +124,13 @@ func ClientMode() error {
 		}
 	}
 
-	// Not Stdin or other function? Switch.
+	// Stdin not available? Switch operation.
 	var msg Message
 	switch conf.Operation {
 	case conf.OP_DEFAULT:
 		msg = Message{Type: DEFAULT, User: conf.User, Hostname: conf.Hostname}
 	case conf.OP_QUERY:
-		msg = Message{Type: QUERY, User: conf.User, Hostname: conf.Hostname}
+		msg = Message{Type: QUERY, User: conf.User, Hostname: conf.Hostname, Query: conf.Query}
 	default:
 		return errors.New("unknown function")
 	}
@@ -159,11 +160,16 @@ func handleConn(conn net.Conn) {
 		return
 	}
 
-	var result string
+	var result []byte
 	switch msg.Type {
 	case HISTORY:
 		r := bufio.NewReader(bytes.NewReader(msg.Payload))
-		result, err = db.AddFromBuffer(r, msg.User, msg.Hostname)
+		res, err := db.AddFromBuffer(r, msg.User, msg.Hostname)
+		if err != nil {
+			result = []byte(err.Error())
+		} else {
+			result = []byte(res)
+		}
 	case DEFAULT:
 		res1, err := db.TopK(20)
 		if err != nil {
@@ -173,15 +179,15 @@ func handleConn(conn net.Conn) {
 		if err != nil {
 			log.Fatalln(err)
 		}
-		result = res1 + res2
+		result = []byte(res1 + res2)
 	case QUERY:
-		result, err = db.Restore(msg.User, msg.Hostname)
+		result, err = db.RunQuery(msg.User, msg.Hostname, msg.Query)
 		if err != nil {
 			log.Fatalln(err)
 		}
 	}
 
-	reply := Message{RESULT, []byte(result), "", ""}
+	reply := Message{Type: RESULT, Payload: result}
 	if err := encryptDispatch(conn, reply); err != nil {
 		log.Println(err)
 	}

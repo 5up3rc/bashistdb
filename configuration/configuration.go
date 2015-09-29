@@ -54,9 +54,9 @@ var (
 	clientMode   string
 	port         string
 	passphrase   string
-	restore      bool
 	format       string
 	help         bool
+	global       bool
 )
 
 // Output Formats
@@ -96,7 +96,7 @@ func init() {
 	dbDefault := os.Getenv("HOME") + "/.bashistdb.sqlite3"
 	userDefault := os.Getenv("USER")
 	hostDefault, _ := os.Hostname()
-	serverAddress := os.Getenv("BASHISTDB_SERVER")
+	serverAddress := os.Getenv("BASHISTDB_REMOTE")
 
 	// flagVars are documentation!
 	flag.StringVar(&dbFile, "db", dbDefault,
@@ -125,16 +125,14 @@ func init() {
 		"Run in (network) server mode. Bashistdb currently binds to 0.0.0.0.")
 	flag.StringVar(&clientMode, "c", serverAddress, "Shorthand for -client")
 	flag.StringVar(&clientMode, "client", serverAddress,
-		"Run in (network) client mode, connect to server address.")
+		"Run in (network) client mode, connect to server address. You may\n"+
+			"        also set this by setting the BASHISTDB_REMOTE variable.")
 	flag.StringVar(&port, "p", "35628", "Shorthand for -port")
 	flag.StringVar(&port, "port", "35628",
 		"Server port to listen on/connect to.")
 	flag.StringVar(&passphrase, "k", "", "Shorthand for -key")
 	flag.StringVar(&passphrase, "key", "",
 		"Passphrase to use for creating keys for network communication encryption.")
-	flag.BoolVar(&restore, "restore", false,
-		"Restores history data (prints to stdout, you may redirect it to your bash_history file),\n"+
-			"        user and hostname act as wildcard surrounded search variables (% means all)")
 	flag.StringVar(&format, "f", FORMAT_OP_DEFAULT, "Shorthand for -format")
 	flag.StringVar(&format, "format", FORMAT_OP_DEFAULT,
 		"How to format query output. Available types are:\n        "+
@@ -147,6 +145,9 @@ func init() {
 			"        Format '"+FORMAT_BASH_HISTORY+"' can be used to restore your history file.")
 	flag.BoolVar(&help, "h", false, "Shorthand for -help")
 	flag.BoolVar(&help, "help", false, "This text")
+	flag.BoolVar(&global, "g", false,
+		"G stands for global. In query mode it sets user and host to wildcard.\n"+
+			"        As such it is equivalent to '-user % -host %'")
 
 	// Read flags and set user and hostname if not provided.
 	flag.Parse()
@@ -161,6 +162,7 @@ Import history:
 The query is run against the command lines only. Special flags exist for user and
 hostname search. SQLite wildcard operators are percent (%) instead of asterisk (*)
 and undercore (_) instead of question mark (?). You may use backslash (\) to escape.
+The query term runs with both a wildcard prefix and suffix. Think of it as grep.
 
 Available options:`)
 		flag.PrintDefaults()
@@ -188,8 +190,6 @@ Available options:`)
 
 	// Determine operation (used in local and client mode)
 	switch {
-	case restore:
-		fallthrough
 	case len(flag.Args()) > 0:
 		Operation = OP_QUERY
 	default:
@@ -222,14 +222,20 @@ Available options:`)
 	}
 	Hostname = hostname
 
+	// Check for global flag
+	if Operation == OP_QUERY && global {
+		User, Hostname = "%", "%"
+	}
+
 	// Welcome message
 	Log.Info.Println("Welcome " + User + "@" + Hostname + ".")
 
 	Query = strings.Join(flag.Args(), " ")
+	Query = "%" + Query + "%" // Grep like behaviour
 
 	DbFile = dbFile
 
-	// Passphrase may come for environment or flag
+	// Passphrase may come from environment or flag
 	if Mode == MODE_SERVER || Mode == MODE_CLIENT {
 		if passphrase == "" {
 			passphrase = os.Getenv("BASHISTDB_KEY")
