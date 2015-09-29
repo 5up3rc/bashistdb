@@ -171,6 +171,7 @@ func handleConn(conn net.Conn) {
 		} else {
 			result = []byte(res)
 		}
+		log.Info.Println("Client sent history: ", res)
 	case DEFAULT:
 		res1, err := db.TopK(20)
 		if err != nil {
@@ -181,12 +182,15 @@ func handleConn(conn net.Conn) {
 			log.Fatalln(err)
 		}
 		result = []byte(res1 + res2)
+		log.Info.Println("Client asked for some stats.")
 	case QUERY:
 		conf.Format = msg.Format
 		result, err = db.RunQuery(msg.User, msg.Hostname, msg.Query)
 		if err != nil {
 			log.Fatalln(err)
 		}
+		log.Info.Printf("Client sent query for '%s' as '%s'@'%s', '%s' format.\n",
+			msg.Query, msg.User, msg.Hostname, msg.Format)
 	}
 
 	reply := Message{Type: RESULT, Payload: result}
