@@ -14,9 +14,8 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
-	"regexp"
-	"strings"
-	"time"
+
+	"projects.30ohm.com/mrsaccess/bashistdb/tools/addTimestamp2Hist/timestamp"
 )
 
 var home = os.Getenv("HOME")
@@ -24,6 +23,9 @@ var home = os.Getenv("HOME")
 var (
 	historyFile = flag.String("f", home+"/.bash_history", "file to process")
 	duration    = flag.Int("since", 3, "span timestamps in equal spaces between N months and now")
+	write       = flag.Bool("write", false,
+		"if set will overwrite the bash history file with the timestamped version,"+
+			"        default behaviour is to print to stdout")
 )
 
 func main() {
@@ -33,22 +35,17 @@ func main() {
 	if err != nil {
 		log.Fatalln(err)
 	}
+	historyOut := timestamp.Convert(historyIn, *duration)
 
-	hasTimestamp := regexp.MustCompile("^#")
-	lines := strings.Split(string(historyIn), "\n")
-	now := time.Now()
-	since := now.AddDate(0, -1**duration, 0)
-	// since := time.Now().Add(-1 * time.Duration(*duration) * 30 * 24 * time.Hour)
-	space := now.Sub(since) / time.Duration(len(lines))
-	for i := 0; i < len(lines); i++ {
-		if hasTimestamp.MatchString(lines[i]) {
-			fmt.Printf("%s\n%s\n", lines[i], lines[i+1])
-			i++
-			continue
-		}
-		if lines[i] != "" {
-			fmt.Printf("#%d\n", since.Unix()+int64(i)*int64(space.Seconds()))
-			fmt.Printf("%s\n", lines[i])
+	if !*write {
+		fmt.Println(string(historyOut))
+	} else {
+		err = ioutil.WriteFile(*historyFile, historyOut, 0600)
+
+		if err != nil {
+			fmt.Println(err)
+		} else {
+			fmt.Println("History file converted.")
 		}
 	}
 }

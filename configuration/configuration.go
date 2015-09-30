@@ -71,6 +71,7 @@ const (
 	MODE_CLIENT
 	MODE_LOCAL
 	MODE_PRINT_VERSION // version flag overrides anything else
+	MODE_INIT
 )
 
 // Operations, you may only add entries at the end.
@@ -110,6 +111,7 @@ var (
 	help       bool
 	global     bool
 	writeconf  bool
+	setup      bool
 )
 
 // Load some defaults from environment
@@ -174,6 +176,7 @@ func init() {
 	flag.BoolVar(&help, "help", false, "help")
 	flag.BoolVar(&global, "g", false, "global: '-user % -host %'")
 	flag.BoolVar(&writeconf, "save", false, "write ~/.bashistdb.conf")
+	flag.BoolVar(&setup, "init", false, "set-up system to use bashistdb")
 
 	flag.Parse()
 
@@ -184,6 +187,8 @@ func init() {
 
 	// Determine run mode
 	switch {
+	case setup:
+		Mode = MODE_INIT
 	case version:
 		Mode = MODE_PRINT_VERSION
 	case server:
@@ -292,7 +297,7 @@ func init() {
 		Key = []byte(passphrase)
 	}
 
-	if writeconf {
+	if writeconf || setup {
 		// Pretty print JSON instead of just Marshal
 		conf := fmt.Sprintf(`{
 "database": %#v,
@@ -365,5 +370,9 @@ Available options:
         Default: ` + FORMAT_DEFAULT + `
     -save    Write some settings (database, remote, port, key) to configuration
         file: ` + confFile + `. These settings override environment variables.
-    -h, --help    This text.`)
+    -h, --help    This text.
+    -init    Save settings to file. Add to ~/.bashrc functions to timestamp
+        history and sent each command to bashistdb (remote or local, taken from
+        settings), add a unique serial timestamp to any untimestamped line in
+        your bash_history.`)
 }

@@ -182,7 +182,7 @@ func handleConn(conn net.Conn) {
 		if err != nil {
 			log.Fatalln(err)
 		}
-		result = []byte(res1 + res2)
+		result = []byte(res1 + "\n\n" + res2)
 		log.Info.Println("Client asked for some stats.")
 	case QUERY:
 		conf.Format = msg.Format

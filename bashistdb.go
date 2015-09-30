@@ -24,6 +24,7 @@ import (
 	"projects.30ohm.com/mrsaccess/bashistdb/llog"
 	"projects.30ohm.com/mrsaccess/bashistdb/local"
 	"projects.30ohm.com/mrsaccess/bashistdb/network"
+	"projects.30ohm.com/mrsaccess/bashistdb/setup"
 )
 
 var log *llog.Logger
@@ -45,6 +46,10 @@ func main() {
 		}
 	case conf.MODE_LOCAL:
 		if err := local.Run(); err != nil {
+			log.Fatalln(err)
+		}
+	case conf.MODE_INIT:
+		if err := setup.Apply(true); err != nil {
 			log.Fatalln(err)
 		}
 	}
