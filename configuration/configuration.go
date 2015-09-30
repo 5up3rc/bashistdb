@@ -286,6 +286,11 @@ func init() {
 	// Set database filename
 	Database = database
 
+	// When we setup the system, we should also save settings
+	if setup {
+		writeconf = true
+	}
+
 	// Passphrase may come from environment or flag
 	if Mode == MODE_SERVER || Mode == MODE_CLIENT || writeconf {
 		if passphrase == "" {
@@ -297,7 +302,7 @@ func init() {
 		Key = []byte(passphrase)
 	}
 
-	if writeconf || setup {
+	if writeconf {
 		// Pretty print JSON instead of just Marshal
 		conf := fmt.Sprintf(`{
 "database": %#v,
