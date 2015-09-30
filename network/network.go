@@ -89,6 +89,7 @@ func ServerMode() error {
 }
 
 func ClientMode() error {
+	log.Debug.Println("Connecting to: ", conf.Address)
 	conn, err := net.Dial("tcp", conf.Address)
 	if err != nil {
 		return err

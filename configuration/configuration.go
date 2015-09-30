@@ -106,6 +106,10 @@ func init() {
 	userDefault := os.Getenv("USER")
 	hostDefault, _ := os.Hostname()
 	serverAddress := os.Getenv("BASHISTDB_REMOTE")
+	defaultPort := os.Getenv("BASHISTDB_PORT")
+	if defaultPort == "" {
+		defaultPort = "35628"
+	}
 
 	// flagVars are documentation!
 	flag.StringVar(&dbFile, "db", dbDefault,
@@ -136,8 +140,8 @@ func init() {
 	flag.StringVar(&clientMode, "client", serverAddress,
 		"Run in (network) client mode, connect to server address. You may\n"+
 			"        also set this by setting the BASHISTDB_REMOTE variable.")
-	flag.StringVar(&port, "p", "35628", "Shorthand for -port")
-	flag.StringVar(&port, "port", "35628",
+	flag.StringVar(&port, "p", defaultPort, "Shorthand for -port")
+	flag.StringVar(&port, "port", defaultPort,
 		"Server port to listen on/connect to.")
 	flag.StringVar(&passphrase, "k", "", "Shorthand for -key")
 	flag.StringVar(&passphrase, "key", "",
@@ -260,4 +264,6 @@ Available options:`)
 		}
 		Key = []byte(passphrase)
 	}
+
+	Log.Debug.Printf("Db file: %s, mode: %d, operation: %d, address: %s\n", DbFile, Mode, Operation, Address)
 }
