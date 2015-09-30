@@ -70,7 +70,7 @@ func init() {
 func New() (Database, error) {
 	// If database file does not exist, set a flag to create file and table.
 	init := false
-	if _, err := os.Stat(conf.DbFile); os.IsNotExist(err) {
+	if _, err := os.Stat(conf.Database); os.IsNotExist(err) {
 		log.Info.Println("Database file not found. Creating new.")
 		init = true
 	} else {
@@ -78,7 +78,7 @@ func New() (Database, error) {
 	}
 	// Open database. SQLite3 provides concurrency in the library level, thus
 	// we don't need to implement locking.
-	db, err := sql.Open("sqlite3", conf.DbFile)
+	db, err := sql.Open("sqlite3", conf.Database)
 	if err != nil {
 		return Database{}, err
 	}
