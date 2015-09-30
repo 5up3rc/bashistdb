@@ -170,6 +170,10 @@ func (d Database) AddRecord(user, host, command string, time time.Time) error {
 	return nil
 }
 
+// A parseline parses history output lines of the following format:
+//     LINENUM RFC3339_DATETIME COMMAND
+var parseLine = regexp.MustCompile(`^ *[0-9]+\*? *([0-9T:+-]{24,24}) *(.*)`)
+
 // AddFromBuffer reads from a buffered Reader and scans for lines that match
 // history command's structure:
 //     LINENUM RFC3339_DATETIME COMMAND
@@ -179,7 +183,6 @@ func (d Database) AddRecord(user, host, command string, time time.Time) error {
 // string) because we don't anything fancier currently.
 func (d Database) AddFromBuffer(r *bufio.Reader, user, host string) (stats string, e error) {
 	//                                  LINENUM        DATETIME         CM
-	parseLine := regexp.MustCompile(`^ *[0-9]+\*? *([0-9T:+-]{24,24}) *(.*)`)
 	tx, _ := d.Begin()
 	stmt := tx.Stmt(d.insert)
 	total, failed := 0, 0
@@ -193,9 +196,7 @@ func (d Database) AddFromBuffer(r *bufio.Reader, user, host string) (stats strin
 				return "", errors.New("Error while reading stdin: " + err.Error())
 			}
 		}
-		// if historyLine == conf.TRANSMISSION_END {
-		// 	break
-		// }
+
 		args := parseLine.FindStringSubmatch(historyLine)
 		if len(args) != 3 {
 			log.Info.Println("Could't decode line. Skipping:", historyLine)
@@ -267,13 +268,13 @@ func (d Database) LastK(k int) (result string, e error) {
 }
 
 // LogConn logs the remote's IP address and connection time into connlog table.
-// Also if it can find a reverse lookup for the IP address inside table rlookup,
+// Also if it can't find a reverse lookup for the IP address inside table rlookup,
 // it performs it asynchronously. Reverse lookup may fail, but we don't care.
 func (d Database) LogConn(remote net.Addr) (err error) {
 	t := time.Now()
 	// Find IP
 	if ip, _, err := net.SplitHostPort(remote.String()); err == nil {
-		// Store IP and datetim
+		// Store IP and datetime
 		_, err = d.Exec(`INSERT INTO connlog VALUES (?, ?);`, t, ip)
 		if err == nil {
 			// Perform a reverse lookup if needed.
@@ -349,7 +350,8 @@ func migrate(d *sql.DB) error {
 	return nil
 }
 
-// RunQuery returns history within the search criteria in timestamped bash_history format
+// RunQuery returns history within the search criteria in the format requested
+// TODO, BUG: format is not thread safe for server mode (conf.Format variable)
 func (d Database) RunQuery(user, hostname, query string) ([]byte, error) {
 	rows, err := d.Query(`SELECT rowid, datetime, user, host, command FROM history WHERE user LIKE ? AND host LIKE ? AND command LIKE ? ESCAPE '\'`,
 		user, hostname, query)

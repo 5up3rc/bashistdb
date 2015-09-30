@@ -238,7 +238,7 @@ func receiveDecrypt(conn net.Conn) (Message, error) {
 	// (receive) -> [de-GOB] -> [DECRYPT] -> [de-GOB] -> msg
 
 	// Receive data and de-serialize to get the encrypted message
-	encMsg := &[]byte{}
+	encMsg := new([]byte)
 	receive := gob.NewDecoder(conn)
 	if err := receive.Decode(encMsg); err != nil {
 		return Message{}, err
@@ -252,7 +252,7 @@ func receiveDecrypt(conn net.Conn) (Message, error) {
 	}
 
 	// Read unencrypted serialized message and de-serialize it
-	msg := &Message{}
+	msg := new(Message)
 	dec := gob.NewDecoder(decrypter)
 	if err = dec.Decode(msg); err != nil {
 		return Message{}, err
