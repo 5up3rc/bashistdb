@@ -27,7 +27,7 @@ import (
 	"os"
 	"strings"
 
-	"projects.30ohm.com/mrsaccess/bashistdb/llog"
+	"github.com/andmarios/bashistdb/llog"
 )
 
 // Exported fields are global settings.

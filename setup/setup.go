@@ -25,9 +25,9 @@ import (
 	"io/ioutil"
 	"os"
 
-	conf "projects.30ohm.com/mrsaccess/bashistdb/configuration"
-	"projects.30ohm.com/mrsaccess/bashistdb/llog"
-	"projects.30ohm.com/mrsaccess/bashistdb/tools/addTimestamp2Hist/timestamp"
+	conf "github.com/andmarios/bashistdb/configuration"
+	"github.com/andmarios/bashistdb/llog"
+	"github.com/andmarios/bashistdb/tools/addTimestamp2Hist/timestamp"
 )
 
 const appendLines = `export HISTTIMEFORMAT="%FT%T%z "

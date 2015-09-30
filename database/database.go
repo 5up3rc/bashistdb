@@ -33,10 +33,10 @@ import (
 	"strings"
 	"time"
 
+	conf "github.com/andmarios/bashistdb/configuration"
+	"github.com/andmarios/bashistdb/llog"
+	"github.com/andmarios/bashistdb/result"
 	"github.com/mattn/go-sqlite3"
-	conf "projects.30ohm.com/mrsaccess/bashistdb/configuration"
-	"projects.30ohm.com/mrsaccess/bashistdb/llog"
-	"projects.30ohm.com/mrsaccess/bashistdb/result"
 )
 
 // Golang's RFC3339 does not comply with all RFC3339 representations

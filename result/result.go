@@ -24,7 +24,7 @@ import (
 	"fmt"
 	"time"
 
-	conf "projects.30ohm.com/mrsaccess/bashistdb/configuration"
+	conf "github.com/andmarios/bashistdb/configuration"
 )
 
 // Format Strings

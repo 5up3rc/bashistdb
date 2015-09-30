@@ -29,10 +29,10 @@ import (
 
 	"github.com/andmarios/crypto/nacl/saltsecret"
 
-	conf "projects.30ohm.com/mrsaccess/bashistdb/configuration"
-	"projects.30ohm.com/mrsaccess/bashistdb/database"
-	"projects.30ohm.com/mrsaccess/bashistdb/llog"
-	"projects.30ohm.com/mrsaccess/bashistdb/local"
+	conf "github.com/andmarios/bashistdb/configuration"
+	"github.com/andmarios/bashistdb/database"
+	"github.com/andmarios/bashistdb/llog"
+	"github.com/andmarios/bashistdb/local"
 )
 
 // Message Types

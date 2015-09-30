@@ -20,11 +20,11 @@ package main
 import (
 	"fmt"
 
-	conf "projects.30ohm.com/mrsaccess/bashistdb/configuration"
-	"projects.30ohm.com/mrsaccess/bashistdb/llog"
-	"projects.30ohm.com/mrsaccess/bashistdb/local"
-	"projects.30ohm.com/mrsaccess/bashistdb/network"
-	"projects.30ohm.com/mrsaccess/bashistdb/setup"
+	conf "github.com/andmarios/bashistdb/configuration"
+	"github.com/andmarios/bashistdb/llog"
+	"github.com/andmarios/bashistdb/local"
+	"github.com/andmarios/bashistdb/network"
+	"github.com/andmarios/bashistdb/setup"
 )
 
 var log *llog.Logger

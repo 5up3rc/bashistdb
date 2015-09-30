@@ -15,7 +15,7 @@ import (
 	"log"
 	"os"
 
-	"projects.30ohm.com/mrsaccess/bashistdb/tools/addTimestamp2Hist/timestamp"
+	"github.com/andmarios/bashistdb/tools/addTimestamp2Hist/timestamp"
 )
 
 var home = os.Getenv("HOME")

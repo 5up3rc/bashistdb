@@ -27,11 +27,11 @@ Running
 
 Install sqlite3 on your machine and go get bashistdb:
 
-    $ go get projects.30ohm.com/mrsaccess/bashistdb
+    $ go get github.com/andmarios/bashistdb
 
 If you are on a hardened machine, you may need instead:
 
-    $ go get -u -ldflags '-extldflags=-fno-PIC' projects.30ohm.com/mrsaccess/bashistdb
+    $ go get -u -ldflags '-extldflags=-fno-PIC' github.com/andmarios/bashistdb
 
 Bashistdb needs your history to be timestamped in order to work. It understands
 the RFC3339 time format.
@@ -57,7 +57,7 @@ In order to set up your bash to log and report RFC3339 timestamps, run:
 
 Add distinct timestamps to your current bash_history:
 
-    $ go get projects.30ohm.com/mrsaccess/bashistdb/tools/addTimestamp2Hist
+    $ go get github.com/andmarios/bashistdb/tools/addTimestamp2Hist
     $ addTimestamp2Hist -since 24 -write
 
 This will create timestamps for your current commands that span equally accross
