@@ -132,7 +132,7 @@ func initDB(db *sql.DB) error {
                     CREATE VIEW connections AS
                          SELECT datetime, remote, reverse
                            FROM connlog AS c
-                             JOIN rlookup AS r
+                             LEFT JOIN rlookup AS r
                                ON c.remote=r.ip;`
 
 	if _, err := db.Exec(stmt); err != nil {
