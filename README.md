@@ -1,26 +1,29 @@
-# bashistdb
+bashistdb
+=========
 
-## Introduction
+Introduction
+-----------
 
 Bashistdb stands for Bash History Database.
 
 Bashistdb stores bash history into a sqlite database.
-It can either be run as standalone, or it can be run in a server-client mode,
-where many clients can store their history into a single database.
-In this mode, communication is compressed and encrypted, in order to be more
-efficient and secure.
+It can either be run as standalone, or it can be run in server-client mode,
+where many clients can store their history into a single database over the
+network. In this mode, communications are compressed and encrypted.
 
 Bashistdb stores for each history line the time it was run, the user that run it
 and the hostname. Currently it isn't meant to be secure against users. This means
 that any user may be able to see commands that other users run, or store commands
-under different user and hostnames. This is by design.
+under different user and hostnames. This is by design. One person may have many
+accounts in one or more machines.
 
-It is work in progress. Many important features are missing but it has a strong
+It is work in progress. Some features are missing but it has a strong
 foundation upon which new features can be build.
 
-## Running
+Running
+-------
 
-### Pre-requisites
+### Pre-requisites ###
 
 Install sqlite3 on your machine and go get bashistdb:
 
@@ -32,81 +35,97 @@ If you are on a hardened machine, you may need instead:
 
 Bashistdb needs your history to be timestamped in order to work. It understands
 the RFC3339 time format.
+If you want to also import your current history, you need to add unique
+timestamps to it. Bashistdb can perform these steps for you in one step:
+
+    $ bashistdb -init
+
+That's it. Logout and login (or source your bashrc) for the changes to take
+effect.
+
+#### Initializing manually ####
+
+If you don't like the automatic setup above, you can perform the steps
+needed manually.
 
 In order to set up your bash to log and report RFC3339 timestamps, run:
 
     $ export HISTTIMEFORMAT="%FT%T%z "
     $ echo 'HISTTIMEFORMAT="%FT%T%z "' >> ~/.bash_rc
+    $ export PROMPT_COMMAND="${PROMPT_COMMAND}; (history 1 | bashistdb 2>/dev/null &)"
+    $ echo 'export PROMPT_COMMAND="${PROMPT_COMMAND}; (history 1 | bashistdb 2>/dev/null &)"' >> ~/.bashrc
 
-While this is enough to get you started, if you want to import your old, non
-timestamped history, you will have to create some distinct timestamps. A tool
-is provided.
+Add distinct timestamps to your current bash_history:
 
     $ go get projects.30ohm.com/mrsaccess/bashistdb/tools/addTimestamp2Hist
-
-*Copy* your old history and then replace it:
-
-    $ cp ~/.bash_history ~/.bash_history.bak
-    $ addTimestamp2Hist -f ~/.bash_history.bak -since 24 > ~/.bash_history
+    $ addTimestamp2Hist -since 24 -write
 
 This will create timestamps for your current commands that span equally accross
 the 24 last months.
 
-### Local mode:
+### Local mode ###
 
-Import your current history:
+In local mode your history is stored on your computer.
+
+Import your current history. You can import it as many times as you want. It is
+very fast and only new lines will be added.
 
     $ history | bashistdb
 
 Check some stats:
 
-    $ bashistdb
+    $ bashistdb -v 1
 
-Restore your history file:
+Perform a query:
 
-    $ bashistdb --restore > ~/.bash_history
+    $ bashistdb <SEARCH TERM>
 
-That's it. You can import your history as many times as you want. It is very fast
-and only new lines will be added.
+Restore your history file, percent sign (%) acts as wildcard for the query:
 
-If you prefer to add your history as it happens, then try:
+    $ bashistdb -format restore % > ~/.bash_history
 
-    $ export PROMPT_COMMAND="${PROMPT_COMMAND}; history 1 | bashistdb"
-
-### Server - Client mode:
+### Server - Client mode ###
 
 Start your server¹:
 
-    $ bashistdb -s -p "passphrase"
+    $ bashistdb -server -key <PASSPHRASE>
 
 From your client machine run bashistdb in client mode:
 
-    $ history | bashistdb -c <SERVER> -p "passphrase"
+    $ history | bashistdb -remote <SERVER> -key <PASSPHRASE>
 
-Optionally you may set your passphrase as an environment variable. Get
-some stats from server:
+You may use a configuration file or environment variables to setup bashistdb.
 
-    $ export BASHISTDB_KEY=passphrase
-    $ bashistdb -c <SERVER>
+Environment variables:
 
-If you want to sent your history at the server as it happens, you better
-start bashistdb client in the background in order to avoid delays:
+    $ export BASHISTDB_REMOTE=<SERVER>
+    $ export BASHISTDB_KEY=<PASSPHRASE>
+    $ bashistdb -verbose 1
 
-    $ export PROMPT_COMMAND="${PROMPT_COMMAND}; (history 1 | bashistdb -c <SERVER> -p passphrase &)"
+Configuration file (~/.bashistdb.conf) is better. You can create it and update
+it with bashistdb:
+
+    $ bashistdb -r <SERVER> -k <PASSPHRASE> -p <PORT> -save
+
+Update a variable in the configuration:
+
+    $ bashistdb -k <NEW PASSPHRASE> -save
 
 Messages are encrypted using NaCl secret-key authenticated encryption and
-scrypt key derivation.
-Check <https://github.com/andmarios/crypto/nacl/saltsecret> if you are
-interested for a higher lever wrapper for golang's crypto/nacl/secretbox.
+scrypt key derivation. Check <https://github.com/andmarios/crypto/nacl/saltsecret>
+if you are interested for a higher lever wrapper for golang's crypto/nacl/secretbox.
 
 1: Currently bashistdb listens to all network interfaces (0.0.0.0). It
-will get a listen address configuration option in the future.
+may get a listen address configuration option in the future.
 
-### Knobs
+### Knobs ###
 
 Run `bashistdb -h` to get a glimpse of available options. They are easy to understand.
+Currently the most useful command not covered until here is `-g`. G stands for global
+and makes your query to search for commands from all users at any host.
 
-## License
+License
+-------
 
 Copyright (c) 2015, Marios Andreopoulos.
 
