@@ -19,8 +19,10 @@
 package configuration
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"os"
 	"strings"
@@ -82,6 +84,16 @@ const (
 	bashistPort = "25625"
 )
 
+// exportFields is a struct used to export some
+// configuration variables to JSON and then to a
+// file
+type exportFields struct {
+	Database string
+	Remote   string
+	Port     string
+	Key      string
+}
+
 // flagVars
 var (
 	database   string
@@ -97,20 +109,44 @@ var (
 	format     string
 	help       bool
 	global     bool
+	writeconf  bool
 )
 
-// Load some defaults from environment except encryption passphrase
+// Load some defaults from environment
 var (
-	databaseD = os.Getenv("HOME") + "/.bashistdb.sqlite3"
-	userD     = os.Getenv("USER")
-	hostD, _  = os.Hostname()
-	remoteD   = os.Getenv("BASHISTDB_REMOTE")
-	portD     = os.Getenv("BASHISTDB_PORT")
+	databaseD   = os.Getenv("HOME") + "/.bashistdb.sqlite3"
+	userD       = os.Getenv("USER")
+	hostD, _    = os.Hostname()
+	remoteD     = os.Getenv("BASHISTDB_REMOTE")
+	portD       = os.Getenv("BASHISTDB_PORT")
+	confFile    = os.Getenv("HOME") + "/.bashistdb.conf"
+	passphraseD = os.Getenv("BASHISTDB_KEY")
 )
 
 // Configuration seems a bit messy but that's the way it is.
 func init() {
-	// If port isn't set by environment, set default port.
+	// Try to load settings from configuration file (if exists)
+	loadedConf := false
+	if c, err := ioutil.ReadFile(confFile); err == nil {
+		e := &exportFields{}
+		if err = json.Unmarshal(c, e); err == nil {
+			if e.Database != "" {
+				databaseD = e.Database
+			}
+			if e.Remote != "" {
+				remoteD = e.Remote
+			}
+			if e.Port != "" {
+				portD = e.Port
+			}
+			if e.Key != "" {
+				passphraseD = e.Key
+			}
+			loadedConf = true
+		}
+	}
+
+	// If port isn't set yet, set default port.
 	if portD == "" {
 		portD = bashistPort
 	}
@@ -137,6 +173,7 @@ func init() {
 	flag.BoolVar(&help, "h", false, "help")
 	flag.BoolVar(&help, "help", false, "help")
 	flag.BoolVar(&global, "g", false, "global: '-user % -host %'")
+	flag.BoolVar(&writeconf, "save", false, "write ~/.bashistdb.conf")
 
 	flag.Parse()
 
@@ -222,7 +259,20 @@ func init() {
 	}
 
 	// Welcome message
-	Log.Info.Println("Welcome " + User + "@" + Hostname + ".")
+	m := ""
+	switch Mode {
+	case MODE_SERVER:
+		m = "server"
+	case MODE_CLIENT:
+		m = "client"
+	case MODE_LOCAL:
+		m = "local"
+	}
+	Log.Info.Println("Welcome " + User + "@" + Hostname + ". Bashistdb is in " + m + " mode.")
+	Log.Debug.Println("Loaded some settings from environment. Configuration file and flags can override them.")
+	if loadedConf {
+		Log.Info.Println("Loaded some settings from ~/.bashistdbconf. Command line flags can override them.")
+	}
 
 	// Prepare query term. Join non-flag args and prefix-suffix with wildcard
 	Query = strings.Join(flag.Args(), " ")
@@ -232,9 +282,9 @@ func init() {
 	Database = database
 
 	// Passphrase may come from environment or flag
-	if Mode == MODE_SERVER || Mode == MODE_CLIENT {
+	if Mode == MODE_SERVER || Mode == MODE_CLIENT || writeconf {
 		if passphrase == "" {
-			passphrase = os.Getenv("BASHISTDB_KEY")
+			passphrase = passphraseD
 			if passphrase == "" {
 				log.Println("Using empty passphrase.")
 			}
@@ -242,7 +292,24 @@ func init() {
 		Key = []byte(passphrase)
 	}
 
-	Log.Debug.Printf("Db file: %s, mode: %d, operation: %d, address: %s\n", Database, Mode, Operation, Address)
+	if writeconf {
+		// Pretty print JSON instead of just Marshal
+		conf := fmt.Sprintf(`{
+"database": %#v,
+"remote"  : %#v,
+"port"    : %#v,
+"key"     : %#v
+}
+`, Database, remote, port, string(Key))
+		err := ioutil.WriteFile(confFile, []byte(conf), 0600)
+		if err != nil {
+			Log.Println(err)
+		} else {
+			Log.Info.Println("Wrote settings to ", confFile)
+		}
+	}
+
+	Log.Debug.Printf("Database: %s, mode: %d, operation: %d, address: %s\n", Database, Mode, Operation, Address)
 }
 
 // printHelp prints custom help in order to be able to
@@ -278,6 +345,7 @@ Available options:
        operations, it doubles as search term for the hostname. Wildcard
        operators (%, _) work but unlike query we search for the exact term.
        Current: ` + hostD + `
+    -g     Sets user and host to % for query operation. (equiv: -user % -host %)
     -s, -server    Run in server mode. Bashistdb currently binds to 0.0.0.0.
     -r, -remote SERVER_ADDRESS
        Run in network client mode, connect to server address. You may also set
@@ -295,6 +363,7 @@ Available options:
 		FORMAT_LOG + ", " + FORMAT_TIMESTAMP + `
         Format '` + FORMAT_BASH_HISTORY + `' can be used to restore your history file.
         Default: ` + FORMAT_DEFAULT + `
-    -h, --help    This text.
-    -g     Sets user and host to % for query operation. (eq to '-user % -host %)`)
+    -save    Write some settings (database, remote, port, key) to configuration
+        file: ` + confFile + `. These settings override environment variables.
+    -h, --help    This text.`)
 }
