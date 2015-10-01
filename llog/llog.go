@@ -15,31 +15,33 @@
 // 	You should have received a copy of the GNU General Public License
 // along with bashistdb.  If not, see <http://www.gnu.org/licenses/>.
 
-/*
-Command bashistdb stores and retrieves bash history into/from a sqlite3
-database.
-*/
+// Package llog provides some basic level logging functionality to bashistdb.
 package llog
 
 import (
 	"io"
 	"io/ioutil"
-	log "log"
+	"log"
 	"os"
 )
 
+// Levels for verbosity.
 const (
-	SILENT = iota
-	INFO
-	DEBUG
+	SILENT = iota // SILENT discards everything (apart those sent to the unnamed logger)
+	INFO          // INFO shows only informational messages
+	DEBUG         // DEBUG shows both info and debug messages, adding filename and linenumber
 )
 
+// A Logger offers an unnamed logger for logging critical events,
+// an info loffer for logging informational messages and a debug
+// logger for logging debug information.
 type Logger struct {
 	*log.Logger
 	Info  *log.Logger
 	Debug *log.Logger
 }
 
+// New creates a new Logger of verbosity level.
 func New(verbosity int) *Logger {
 	var deb, inf *log.Logger
 	var debOut, infOut io.Writer
