@@ -65,6 +65,7 @@ var availableFormats = map[string]bool{
 }
 
 // Run Modes, you may only add entries at the end.
+// If many are set, precedence should be PRINT_VERSION > INIT > SERVER > CLIENT > LOCAL
 const (
 	_ = iota
 	MODE_SERVER
@@ -79,6 +80,8 @@ const (
 	_          = iota
 	OP_DEFAULT // Default tries to read from stdin or print some stats if it can't
 	OP_QUERY
+	OP_STATIC_QUERY
+	OP_DELETE
 )
 
 const (
@@ -95,106 +98,162 @@ type exportFields struct {
 	Key      string
 }
 
-// flagVars
+// Load some defaults from environment and some basic settings
 var (
-	database   string
-	version    bool
-	verbosity  int
-	user       string
-	hostname   string
-	query      string
-	server     bool
-	remote     string
-	port       string
-	passphrase string
-	format     string
-	help       bool
-	global     bool
-	writeconf  bool
-	setup      bool
+	databaseEnv   = os.Getenv("HOME") + "/.bashistdb.sqlite3"
+	userEnv       = os.Getenv("USER")
+	hostEnv, _    = os.Hostname()
+	remoteEnv     = os.Getenv("BASHISTDB_REMOTE")
+	portEnv       = os.Getenv("BASHISTDB_PORT")
+	passphraseEnv = os.Getenv("BASHISTDB_KEY")
+	// Vars below can not be overriden by user
+	confFile      = os.Getenv("HOME") + "/.bashistdb.conf"
+	foundConfFile = false
 )
 
-// Load some defaults from environment
+// flag variables
+// Vars ending in Set are bool
+// For non-bool vars we may create a bool counterpart
+// using flag.Visit
 var (
-	databaseD   = os.Getenv("HOME") + "/.bashistdb.sqlite3"
-	userD       = os.Getenv("USER")
-	hostD, _    = os.Hostname()
-	remoteD     = os.Getenv("BASHISTDB_REMOTE")
-	portD       = os.Getenv("BASHISTDB_PORT")
-	confFile    = os.Getenv("HOME") + "/.bashistdb.conf"
-	passphraseD = os.Getenv("BASHISTDB_KEY")
+	// These are used as actual flagvars
+	database     string
+	versionSet   bool
+	verbosity    int
+	user         string
+	host         string
+	serverSet    bool
+	remote       string
+	port         string
+	passphrase   string
+	format       string
+	helpSet      bool
+	globalSet    bool
+	writeconfSet bool
+	setupSet     bool
+	topk         int
+	lastk        int
+	localSet     bool
+	uniqueSet    bool
+	// Here we will store the non flag arguments
+	query string
+	//	querySet bool
+	// These are not parsed from flags but we set them with flag.Visit
+	userSet       = false
+	hostSet       = false
+	remoteSet     = false
+	portSet       = false
+	passphraseSet = false
+	formatSet     = false
+	topkSet       = false
+	lastkSet      = false
 )
 
-// Configuration seems a bit messy but that's the way it is.
-func init() {
+// Set visited flags so we may have boolean expression criteria
+func setVisitedFlags(f *flag.Flag) {
+	switch f.Name {
+	case "u", "user":
+		userSet = true
+	case "H", "host":
+		hostSet = true
+	case "r", "remote":
+		remoteSet = true
+	case "p", "port":
+		portSet = true
+	case "k", "key":
+		passphraseSet = true
+	case "f", "format":
+		formatSet = true
+	case "topk":
+		topkSet = true
+	case "lastk":
+		lastkSet = true
+	}
+}
+
+// Read configuration file, overrides environment variables.
+func readConfFile() {
 	// Try to load settings from configuration file (if exists)
-	loadedConf := false
 	if c, err := ioutil.ReadFile(confFile); err == nil {
 		e := &exportFields{}
 		if err = json.Unmarshal(c, e); err == nil {
 			if e.Database != "" {
-				databaseD = e.Database
+				databaseEnv = e.Database
 			}
 			if e.Remote != "" {
-				remoteD = e.Remote
+				remoteEnv = e.Remote
 			}
 			if e.Port != "" {
-				portD = e.Port
+				portEnv = e.Port
 			}
 			if e.Key != "" {
-				passphraseD = e.Key
+				passphraseEnv = e.Key
 			}
-			loadedConf = true
+			foundConfFile = true
+		} else {
+			log.Fatalln("Could not parse configuration file:",
+				err.Error())
 		}
 	}
+}
+
+// Configuration seems a bit messy but that's the way it is.
+func init() {
+	readConfFile()
 
 	// If port isn't set yet, set default port.
-	if portD == "" {
-		portD = bashistPort
+	if portEnv == "" {
+		portEnv = bashistPort
 	}
 
 	// flagVars, we keep actual documentation separated
-	flag.StringVar(&database, "db", databaseD, "Database file")
-	flag.BoolVar(&version, "V", false, "Show version.")
+	flag.StringVar(&database, "db", databaseEnv, "Database file")
+	flag.BoolVar(&versionSet, "V", false, "Show version.")
 	flag.IntVar(&verbosity, "v", 0, "verbosity level")
 	flag.IntVar(&verbosity, "verbose", 0, "verbosity level")
-	flag.StringVar(&user, "u", userD, "custom username")
-	flag.StringVar(&user, "user", userD, "custom username")
-	flag.StringVar(&hostname, "H", hostD, "custom hostname")
-	flag.StringVar(&hostname, "host", hostD, " custom hostname")
-	flag.BoolVar(&server, "s", false, "run as server")
-	flag.BoolVar(&server, "server", false, "run as server")
-	flag.StringVar(&remote, "r", remoteD, "run as client, connect to SERVER")
-	flag.StringVar(&remote, "remote", remoteD, "run as client, connect to SERVER")
-	flag.StringVar(&port, "p", portD, "port")
-	flag.StringVar(&port, "port", portD, "port")
+	flag.StringVar(&user, "u", userEnv, "custom username")
+	flag.StringVar(&user, "user", userEnv, "custom username")
+	flag.StringVar(&host, "H", hostEnv, "custom hostname")
+	flag.StringVar(&host, "host", hostEnv, " custom hostname")
+	flag.BoolVar(&serverSet, "s", false, "run as server")
+	flag.BoolVar(&serverSet, "server", false, "run as server")
+	flag.StringVar(&remote, "r", remoteEnv, "run as client, connect to SERVER")
+	flag.StringVar(&remote, "remote", remoteEnv, "run as client, connect to SERVER")
+	flag.StringVar(&port, "p", portEnv, "port")
+	flag.StringVar(&port, "port", portEnv, "port")
 	flag.StringVar(&passphrase, "k", "", "passphrase")
 	flag.StringVar(&passphrase, "key", "", "passphrase")
 	flag.StringVar(&format, "f", FORMAT_DEFAULT, "query output format")
 	flag.StringVar(&format, "format", FORMAT_DEFAULT, "query output format")
-	flag.BoolVar(&help, "h", false, "help")
-	flag.BoolVar(&help, "help", false, "help")
-	flag.BoolVar(&global, "g", false, "global: '-user % -host %'")
-	flag.BoolVar(&writeconf, "save", false, "write ~/.bashistdb.conf")
-	flag.BoolVar(&setup, "init", false, "set-up system to use bashistdb")
+	flag.BoolVar(&helpSet, "h", false, "help")
+	flag.BoolVar(&helpSet, "help", false, "help")
+	flag.BoolVar(&globalSet, "g", false, "global: '-user % -host %'")
+	flag.BoolVar(&writeconfSet, "save", false, "write ~/.bashistdb.conf")
+	flag.BoolVar(&setupSet, "init", false, "set-up system to use bashistdb")
+	flag.BoolVar(&uniqueSet, "unique", false, "show unique (distinct) command lines")
+	flag.IntVar(&topk, "topk", 20, "return K most used command lines")
+	flag.IntVar(&lastk, "lastk", 20, "return K most recent command lines")
+	flag.BoolVar(&localSet, "local", false, "force local mode")
 
 	flag.Parse()
 
-	if help {
+	flag.Visit(setVisitedFlags)
+
+	if helpSet {
 		printHelp()
 		os.Exit(0)
 	}
 
 	// Determine run mode
 	switch {
-	case setup:
+	case setupSet:
 		Mode = MODE_INIT
-	case version:
+	case versionSet:
 		Mode = MODE_PRINT_VERSION
-	case server:
+	case serverSet:
 		Mode = MODE_SERVER
 		Address = ":" + port
-	case remote != "":
+	case remote != "" && !localSet:
 		Mode = MODE_CLIENT
 		Address = remote + ":" + port
 	default:
@@ -202,12 +261,10 @@ func init() {
 	}
 
 	// Server mode incompatible with client mode.
-	if Mode == MODE_SERVER && remote != "" {
-		if remote != remoteD { // User may just set his BASHISTDB_REMOTE env var
-			fmt.Println("Incompatible options: server and client.\n")
-			printHelp()
-			os.Exit(1)
-		}
+	if Mode == MODE_SERVER && remoteSet { // User may just set his BASHISTDB_REMOTE env var
+		fmt.Printf("Incompatible options: server and client.\n\n")
+		printHelp()
+		os.Exit(1)
 	}
 
 	// Determine operation (used in local and client mode)
@@ -220,13 +277,15 @@ func init() {
 			Log.Info.Println("The specified format doesn't exist. Reverting to default:", FORMAT_DEFAULT)
 			Format = FORMAT_DEFAULT
 		}
+	case topkSet, lastkSet:
+		Operation = OP_STATIC_QUERY
 	default: // Try to read from stdin or print some stats if you can't
 		Operation = OP_DEFAULT
 	}
 
 	// Check mode-operation incompatibility
 	if Mode == MODE_SERVER && Operation != OP_DEFAULT {
-		fmt.Println("Incompatible options: asked for server mode and other functions.\n")
+		fmt.Printf("Incompatible options: asked for server mode and other functions.\n\n")
 		printHelp()
 		os.Exit(1)
 	}
@@ -244,22 +303,22 @@ func init() {
 
 	// Protest about username issues.
 	if user == "" {
-		Log.Info.Println("Couldn't read username from $USER system variable and none was provided by -user flag.\n")
+		Log.Info.Printf("Couldn't read username from $USER system variable and none was provided by -user flag.\n\n")
 		printHelp()
 		os.Exit(1)
 	}
 	User = user
 
 	// Protest about hostname issues.
-	if hostname == "" {
-		Log.Info.Println("Couldn't get hostname from system and none was provided by -host flag.\n")
+	if host == "" {
+		Log.Info.Printf("Couldn't get hostname from system and none was provided by -host flag.\n\n")
 		printHelp()
 		os.Exit(1)
 	}
-	Hostname = hostname
+	Hostname = host
 
 	// Check for global (search) flag
-	if Operation == OP_QUERY && global {
+	if Operation == OP_QUERY && globalSet {
 		User, Hostname = "%", "%"
 	}
 
@@ -275,7 +334,7 @@ func init() {
 	}
 	Log.Info.Println("Welcome " + User + "@" + Hostname + ". Bashistdb is in " + m + " mode.")
 	Log.Debug.Println("Loaded some settings from environment. Configuration file and flags can override them.")
-	if loadedConf {
+	if foundConfFile {
 		Log.Info.Println("Loaded some settings from ~/.bashistdbconf. Command line flags can override them.")
 	}
 
@@ -287,14 +346,14 @@ func init() {
 	Database = database
 
 	// When we setup the system, we should also save settings
-	if setup {
-		writeconf = true
+	if setupSet {
+		writeconfSet = true
 	}
 
 	// Passphrase may come from environment or flag
-	if Mode == MODE_SERVER || Mode == MODE_CLIENT || writeconf {
+	if Mode == MODE_SERVER || Mode == MODE_CLIENT || writeconfSet {
 		if passphrase == "" {
-			passphrase = passphraseD
+			passphrase = passphraseEnv
 			if passphrase == "" {
 				log.Println("Using empty passphrase.")
 			}
@@ -302,7 +361,7 @@ func init() {
 		Key = []byte(passphrase)
 	}
 
-	if writeconf {
+	if writeconfSet {
 		// Pretty print JSON instead of just Marshal
 		conf := fmt.Sprintf(`{
 "database": %#v,
@@ -340,7 +399,7 @@ and suffix. Think of it as grep.
 Available options:
     -db FILE
        Path to database file. It will be created if it doesn't exist.
-       Current: ` + databaseD + `
+       Current: ` + databaseEnv + `
     -V     Print version info and exit.
     -v , -verbose LEVEL
        Verbosity level: 0 for silent, 1 for info, 2 for debug.
@@ -349,20 +408,20 @@ Available options:
        Optional user name to use instead of reading $USER variable. In query
        operations it doubles as search term for the username. Wildcard
        operators (%, _) work but unlike query we search for the exact term.
-       Current: ` + userD + `
+       Current: ` + userEnv + `
     -H, -host HOST
        Optional hostname to use instead of reading it from the system. In query
        operations, it doubles as search term for the hostname. Wildcard
        operators (%, _) work but unlike query we search for the exact term.
-       Current: ` + hostD + `
+       Current: ` + hostEnv + `
     -g     Sets user and host to % for query operation. (equiv: -user % -host %)
     -s, -server    Run in server mode. Bashistdb currently binds to 0.0.0.0.
     -r, -remote SERVER_ADDRESS
        Run in network client mode, connect to server address. You may also set
-       this with the BASHISTDB_REMOTE env variable. Current: ` + remoteD + `
+       this with the BASHISTDB_REMOTE env variable. Current: ` + remoteEnv + `
     -p, -port PORT
 	Server port to listen on/connect to. You may also set this with the
-        BASHISTDB_PORT env variable. Current: ` + portD + `
+        BASHISTDB_PORT env variable. Current: ` + portEnv + `
     -k, -key PASSPHRASE
 	Passphrase to use for creating keys to encrypt network communications.
         You may also set it via the BASHISTDB_KEY env variable.
@@ -376,8 +435,9 @@ Available options:
     -save    Write some settings (database, remote, port, key) to configuration
         file: ` + confFile + `. These settings override environment variables.
     -h, --help    This text.
-    -init    Save settings to file. Add to ~/.bashrc functions to timestamp
-        history and sent each command to bashistdb (remote or local, taken from
-        settings), add a unique serial timestamp to any untimestamped line in
-        your bash_history.`)
+    -init    Setup system for bashistdb: (1) Save settings to file. (2) Add to
+        bashrc functions to timestamp history and sent each command to bashistdb
+        (remote or local, taken from settings), (3) add a unique serial timestamp
+        to any untimestamped line in your bash_history.
+    -local   Force local [db] mode, despite remote mode being set by env or conf.`)
 }

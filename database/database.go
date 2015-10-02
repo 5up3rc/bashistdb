@@ -53,6 +53,16 @@ type Database struct {
 	statements
 }
 
+// A QueryParams contains parameters that are used to run a query.
+// Depending on query type, some fields may not be used.
+type QueryParams struct {
+	Type    string // Query type
+	User    string // Search User
+	Host    string // Search Host
+	Format  string // Return format
+	Command string // Search Term for command line field
+}
+
 type statements struct {
 	insert *sql.Stmt
 }
@@ -352,7 +362,7 @@ func migrate(d *sql.DB) error {
 
 // RunQuery returns history within the search criteria in the format requested
 // TODO, BUG: format is not thread safe for server mode (conf.Format variable)
-func (d Database) RunQuery(user, hostname, query string) ([]byte, error) {
+func (d Database) RunQuery(user, hostname, query, format string) ([]byte, error) {
 	rows, err := d.Query(`SELECT rowid, datetime, user, host, command FROM history WHERE user LIKE ? AND host LIKE ? AND command LIKE ? ESCAPE '\'`,
 		user, hostname, query)
 	if err != nil {
@@ -360,7 +370,7 @@ func (d Database) RunQuery(user, hostname, query string) ([]byte, error) {
 	}
 	defer rows.Close()
 
-	res := result.New()
+	res := result.New(format)
 	for rows.Next() {
 		var user, host, command string
 		var t time.Time

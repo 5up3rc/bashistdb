@@ -43,16 +43,17 @@ const (
 type Result struct {
 	out     *bytes.Buffer
 	written *bool // we use this to work around json not accepting a trailing comma
+	format  string
 }
 
 // New returns a new Result
-func New() *Result {
+func New(format string) *Result {
 	var out bytes.Buffer
-	if conf.Format == conf.FORMAT_JSON {
+	if format == conf.FORMAT_JSON {
 		out.WriteString("[\n")
 	}
 	w := false
-	return &Result{&out, &w}
+	return &Result{&out, &w, format}
 }
 
 // A rowJson is an internal struct to use with json.Marshal
@@ -67,7 +68,7 @@ func (r Result) AddRow(row int, datetime time.Time, user, host string, command s
 
 	switch *r.written {
 	case true:
-		if conf.Format != conf.FORMAT_JSON {
+		if r.format != conf.FORMAT_JSON {
 			_ = r.out.WriteByte('\n')
 		} else {
 			_, _ = r.out.WriteString(",\n")
@@ -76,7 +77,7 @@ func (r Result) AddRow(row int, datetime time.Time, user, host string, command s
 		*r.written = true
 	}
 
-	switch conf.Format {
+	switch r.format {
 	case conf.FORMAT_ALL:
 		f = fmt.Sprintf(FORMAT_ALL_S, row, datetime, user, host, command)
 	case conf.FORMAT_BASH_HISTORY:

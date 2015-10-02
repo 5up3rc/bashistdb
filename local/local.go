@@ -65,7 +65,7 @@ func Run() error {
 			fmt.Println(res)
 		}
 	case conf.OP_QUERY:
-		res, err := db.RunQuery(conf.User, conf.Hostname, conf.Query)
+		res, err := db.RunQuery(conf.User, conf.Hostname, conf.Query, conf.Format)
 		if err != nil {
 			return err
 		}
