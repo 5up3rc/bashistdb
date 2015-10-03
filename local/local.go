@@ -41,31 +41,29 @@ func Run() error {
 	log = conf.Log
 
 	switch conf.Operation {
-	case conf.OP_DEFAULT:
-		r, err := GetStdin()
-		if err == nil {
-			stats, err := db.AddFromBuffer(r, conf.User, conf.Hostname)
-			if err != nil {
-				return errors.New("Error while processing stdin: " +
-					err.Error())
-			}
-			// We print to log because we usually want this to be quiet
-			// as we may run it every time we hit ENTER in a bash prompt.
-			log.Info.Println(stats)
-		} else {
-			res, err := db.TopK(20)
-			if err != nil {
-				return err
-			}
-			fmt.Println(res)
-			res, err = db.LastK(10)
-			if err != nil {
-				return err
-			}
-			fmt.Println(res)
+	case conf.OP_IMPORT:
+		r := bufio.NewReader(os.Stdin)
+		stats, err := db.AddFromBuffer(r, conf.User, conf.Hostname)
+		if err != nil {
+			return errors.New("Error while processing stdin: " +
+				err.Error())
 		}
+		// We print to log because we usually want this to be quiet
+		// as we may run it every time we hit ENTER in a bash prompt.
+		log.Info.Println(stats)
+	case conf.OP_STATS:
+		res, err := db.TopK("%", "%", "%", 20)
+		if err != nil {
+			return err
+		}
+		fmt.Println(string(res))
+		res, err = db.LastK("%", "%", "%", 10)
+		if err != nil {
+			return err
+		}
+		fmt.Println(string(res))
 	case conf.OP_QUERY:
-		res, err := db.RunQuery(conf.User, conf.Hostname, conf.Query, conf.Format)
+		res, err := db.RunQuery(conf.QParams)
 		if err != nil {
 			return err
 		}
@@ -74,14 +72,15 @@ func Run() error {
 	return nil
 }
 
+// DEPRECATED
 // GetStdin checks if stdin is a unix character device,
 // that is if data is piped in to us. If yes it returns
 // a reader for stdin, else it returns an error.
-func GetStdin() (r *bufio.Reader, e error) {
-	r = bufio.NewReader(os.Stdin)
-	stats, _ := os.Stdin.Stat()
-	if (stats.Mode() & os.ModeCharDevice) != os.ModeCharDevice {
-		return r, nil
-	}
-	return r, errors.New("Stdin is not character device.")
-}
+// func GetStdin() (r *bufio.Reader, e error) {
+// 	r = bufio.NewReader(os.Stdin)
+// 	stats, _ := os.Stdin.Stat()
+// 	if (stats.Mode() & os.ModeCharDevice) != os.ModeCharDevice {
+// 		return r, nil
+// 	}
+// 	return r, errors.New("Stdin is not character device.")
+// }

@@ -26,31 +26,29 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net"
+	"os"
 
 	"github.com/andmarios/crypto/nacl/saltsecret"
 
 	conf "github.com/andmarios/bashistdb/configuration"
 	"github.com/andmarios/bashistdb/database"
 	"github.com/andmarios/bashistdb/llog"
-	"github.com/andmarios/bashistdb/local"
 )
 
 // Message Types
 const (
-	_ = iota
-	RESULT
-	HISTORY
-	DEFAULT
-	QUERY
+	RESULT  = "result"
+	HISTORY = "history"
+	STATS   = "stats"
+	QUERY   = "query"
 )
 
 type Message struct {
-	Type     int
+	Type     string
 	Payload  []byte
 	User     string
 	Hostname string
-	Query    string
-	Format   string
+	QParams  conf.QueryParams
 }
 
 var log *llog.Logger
@@ -85,7 +83,7 @@ func ServerMode() error {
 		}
 		go handleConn(conn)
 	}
-	return nil
+	//	return nil // go vet doesn't like this...
 }
 
 func ClientMode() error {
@@ -96,43 +94,38 @@ func ClientMode() error {
 	}
 	defer conn.Close()
 
-	// If Operation == OP_DEFAULT, attempt to read from Stdin
-	if conf.Operation == conf.OP_DEFAULT {
-		r, err := local.GetStdin()
-		if err == nil {
-			history, err := ioutil.ReadAll(r)
-			if err != nil {
-				return err
-			}
-
-			msg := Message{Type: HISTORY, Payload: history, User: conf.User, Hostname: conf.Hostname}
-
-			if err := encryptDispatch(conn, msg); err != nil {
-				return err
-			}
-
-			log.Info.Println("Sent history.")
-
-			reply, err := receiveDecrypt(conn)
-			if err != nil {
-				return err
-			}
-
-			switch reply.Type {
-			case RESULT:
-				log.Info.Println("Received:", string(reply.Payload))
-			}
-			return nil
-		}
-	}
-
-	// Stdin not available? Switch operation.
 	var msg Message
+
 	switch conf.Operation {
-	case conf.OP_DEFAULT:
-		msg = Message{Type: DEFAULT, User: conf.User, Hostname: conf.Hostname}
+	case conf.OP_IMPORT: // If Operation == OP_IMPORT, attempt to read from Stdin
+		r := bufio.NewReader(os.Stdin)
+		history, err := ioutil.ReadAll(r)
+		if err != nil {
+			return err
+		}
+
+		msg := Message{Type: HISTORY, Payload: history, User: conf.User, Hostname: conf.Hostname}
+
+		if err := encryptDispatch(conn, msg); err != nil {
+			return err
+		}
+
+		log.Info.Println("Sent history.")
+
+		reply, err := receiveDecrypt(conn)
+		if err != nil {
+			return err
+		}
+
+		switch reply.Type {
+		case RESULT:
+			log.Info.Println("Received:", string(reply.Payload))
+		}
+		return nil
+	case conf.OP_STATS:
+		msg = Message{Type: STATS, User: conf.User, Hostname: conf.Hostname}
 	case conf.OP_QUERY:
-		msg = Message{Type: QUERY, User: conf.User, Hostname: conf.Hostname, Query: conf.Query, Format: conf.Format}
+		msg = Message{Type: QUERY, User: conf.User, Hostname: conf.Hostname, QParams: conf.QParams}
 	default:
 		return errors.New("unknown function")
 	}
@@ -153,6 +146,7 @@ func ClientMode() error {
 	return nil
 }
 
+// handleConn is the server code that handles clients (reads message type and performs relevant operation)
 func handleConn(conn net.Conn) {
 	defer conn.Close()
 
@@ -173,24 +167,26 @@ func handleConn(conn net.Conn) {
 			result = []byte(res)
 		}
 		log.Info.Println("Client sent history: ", res)
-	case DEFAULT:
-		res1, err := db.TopK(20)
+	case STATS:
+		res1, err := db.TopK("%", "%", "%", 20)
 		if err != nil {
 			log.Fatalln(err)
 		}
-		res2, err := db.LastK(10)
+		res2, err := db.LastK("%", "%", "%", 10)
 		if err != nil {
 			log.Fatalln(err)
 		}
-		result = []byte(res1 + "\n\n" + res2)
+		result := res1
+		result = append(result, []byte("\n\n")...)
+		result = append(result, res2...)
 		log.Info.Println("Client asked for some stats.")
 	case QUERY:
-		result, err = db.RunQuery(msg.User, msg.Hostname, msg.Query, msg.Format)
+		result, err = db.RunQuery(msg.QParams)
 		if err != nil {
 			log.Fatalln(err)
 		}
 		log.Info.Printf("Client sent query for '%s' as '%s'@'%s', '%s' format.\n",
-			msg.Query, msg.User, msg.Hostname, msg.Format)
+			msg.QParams.User, msg.QParams.Host, msg.QParams.Command, msg.QParams.Format)
 	}
 
 	reply := Message{Type: RESULT, Payload: result}

@@ -36,12 +36,15 @@ var (
 	Operation int          // function (read, restore, et)
 	Log       *llog.Logger // Log is the mail logger to log to
 	Address   string       // Address is the remote server's address for client mode or server's address for server mode
-	User      string       // User is the username or username search term
-	Hostname  string       // Hostname is the hostname or hostname search term
-	Query     string       // Query is the command line search term
 	Database  string       // Database is the filename of the sqlite database
 	Key       []byte       // Key it the user passphrase to generate keys for net comms
-	Format    string       // Format is the output format for the query results
+	// These maybe should go to query params:
+	User     string // User is the username or username search term
+	Hostname string // Hostname is the hostname or hostname search term
+	Query    string // Query is the command line search term
+	Format   string // Format is the output format for the query results
+
+	QParams QueryParams // Parameters to query.
 )
 
 // Output Formats
@@ -66,6 +69,7 @@ var availableFormats = map[string]bool{
 
 // Run Modes, you may only add entries at the end.
 // If many are set, precedence should be PRINT_VERSION > INIT > SERVER > CLIENT > LOCAL
+// It is ok that we use ints because these are not communicated between client and server.
 const (
 	_ = iota
 	MODE_SERVER
@@ -77,11 +81,31 @@ const (
 
 // Operations, you may only add entries at the end.
 const (
-	_          = iota
-	OP_DEFAULT // Default tries to read from stdin or print some stats if it can't
-	OP_QUERY
-	OP_STATIC_QUERY
-	OP_DELETE
+	_         = iota
+	OP_IMPORT // Import history from stdin
+	OP_QUERY  // Run a query
+	OP_STATS  // Run some default stat queries (runs when no args are given)
+	OP_DELETE // Delete lines from history (to be implemented)
+)
+
+// A QueryParams contains parameters that are used to run a query.
+// Depending on query type, some fields may not be used.
+type QueryParams struct {
+	Type    string // Query type
+	TypeVal int    // If topk or lastk, we store k here
+	User    string // Search User
+	Host    string // Search Host
+	Format  string // Return format
+	Command string // Search Term for command line field
+}
+
+// Available query types
+const (
+	QUERY         = "query"   // A normal search (grep)
+	QUERY_LASTK   = "lastk"   // K most recent commands
+	QUERY_TOPK    = "topk"    // K most used commands
+	QUERY_USERS   = "users"   // users@host in database
+	QUERY_CLIENTS = "clients" // unique clients connected
 )
 
 const (
@@ -135,9 +159,9 @@ var (
 	lastk        int
 	localSet     bool
 	uniqueSet    bool
+	usersSet     bool
 	// Here we will store the non flag arguments
 	query string
-	//	querySet bool
 	// These are not parsed from flags but we set them with flag.Visit
 	userSet       = false
 	hostSet       = false
@@ -147,6 +171,9 @@ var (
 	formatSet     = false
 	topkSet       = false
 	lastkSet      = false
+	// These are set with manual searches
+	querySet = false
+	stdinSet = false
 )
 
 // Set visited flags so we may have boolean expression criteria
@@ -230,9 +257,10 @@ func init() {
 	flag.BoolVar(&globalSet, "g", false, "global: '-user % -host %'")
 	flag.BoolVar(&writeconfSet, "save", false, "write ~/.bashistdb.conf")
 	flag.BoolVar(&setupSet, "init", false, "set-up system to use bashistdb")
-	flag.BoolVar(&uniqueSet, "unique", false, "show unique (distinct) command lines")
+	flag.BoolVar(&uniqueSet, "unique", false, "show unique (distinct) command lines") //TODO
 	flag.IntVar(&topk, "topk", 20, "return K most used command lines")
 	flag.IntVar(&lastk, "lastk", 20, "return K most recent command lines")
+	flag.BoolVar(&usersSet, "users", false, "show users in database")
 	flag.BoolVar(&localSet, "local", false, "force local mode")
 
 	flag.Parse()
@@ -244,8 +272,8 @@ func init() {
 		os.Exit(0)
 	}
 
-	// Determine run mode
-	switch {
+	// Determine run mode. A run mode is expected to run and then bashistdb toexit.
+	switch { // Cases are in precedence order
 	case setupSet:
 		Mode = MODE_INIT
 	case versionSet:
@@ -267,24 +295,52 @@ func init() {
 		os.Exit(1)
 	}
 
+	// Detect if there is a QUERY in the command line (that is non-flag arguments)
+	if len(flag.Args()) > 0 {
+		querySet = true
+	}
+
+	// Detect if there are data coming from stdin:
+	stats, _ := os.Stdin.Stat()
+	if (stats.Mode() & os.ModeCharDevice) != os.ModeCharDevice {
+		stdinSet = true
+	}
+
 	// Determine operation (used in local and client mode)
 	switch {
-	case len(flag.Args()) > 0: // We have non-flag arguments -> it is a query
+	case topkSet:
 		Operation = OP_QUERY
+		QParams.Type = QUERY_TOPK
+		QParams.TypeVal = topk
+	case lastkSet:
+		Operation = OP_QUERY
+		QParams.Type = QUERY_LASTK
+		QParams.TypeVal = lastk
+	case usersSet:
+		Operation = OP_QUERY
+		QParams.Type = QUERY_USERS
+	case querySet: // We have non-flag arguments -> it is a query
+		Operation = OP_QUERY
+		QParams.Type = QUERY
+	case topkSet, lastkSet:
+		Operation = OP_QUERY
+	case stdinSet:
+		Operation = OP_IMPORT
+	default: // Try to read from stdin or print some stats if you can't
+		Operation = OP_STATS
+	}
+
+	if Operation == OP_QUERY {
 		if availableFormats[format] { // Query uses output format
-			Format = format
+			QParams.Format = format
 		} else {
 			Log.Info.Println("The specified format doesn't exist. Reverting to default:", FORMAT_DEFAULT)
-			Format = FORMAT_DEFAULT
+			QParams.Format = FORMAT_DEFAULT
 		}
-	case topkSet, lastkSet:
-		Operation = OP_STATIC_QUERY
-	default: // Try to read from stdin or print some stats if you can't
-		Operation = OP_DEFAULT
 	}
 
 	// Check mode-operation incompatibility
-	if Mode == MODE_SERVER && Operation != OP_DEFAULT {
+	if Mode == MODE_SERVER && Operation != OP_STATS {
 		fmt.Printf("Incompatible options: asked for server mode and other functions.\n\n")
 		printHelp()
 		os.Exit(1)
@@ -307,7 +363,11 @@ func init() {
 		printHelp()
 		os.Exit(1)
 	}
-	User = user
+	User = user // TODO: remove
+	QParams.User = user
+	if usersSet && !userSet { // simple users query should be global
+		QParams.User = "%"
+	}
 
 	// Protest about hostname issues.
 	if host == "" {
@@ -315,11 +375,16 @@ func init() {
 		printHelp()
 		os.Exit(1)
 	}
-	Hostname = host
+	Hostname = host // TODO: remove
+	QParams.Host = host
 
 	// Check for global (search) flag
 	if Operation == OP_QUERY && globalSet {
-		User, Hostname = "%", "%"
+		// User, Hostname = "%", "%" // TODO: remove
+		QParams.User, QParams.Host = "%", "%"
+	}
+	if usersSet && !hostSet { // simple users query should be global
+		QParams.Host = "%"
 	}
 
 	// Welcome message
@@ -341,6 +406,11 @@ func init() {
 	// Prepare query term. Join non-flag args and prefix-suffix with wildcard
 	Query = strings.Join(flag.Args(), " ")
 	Query = "%" + Query + "%" // Grep like behaviour
+	QParams.Command = Query
+
+	if Operation == OP_QUERY {
+		Log.Info.Printf("Your query parameters are user: %s, host: %s, command line: %s.\n", QParams.User, QParams.Host, QParams.Command)
+	}
 
 	// Set database filename
 	Database = database
@@ -415,29 +485,38 @@ Available options:
        operators (%, _) work but unlike query we search for the exact term.
        Current: ` + hostEnv + `
     -g     Sets user and host to % for query operation. (equiv: -user % -host %)
+    -lastk K
+       Return the K most recent commands for the set user and host. If you add
+       a query term it will return the K most recent commands that include it.
+    -topk K
+       Return the K most frequent commands for the set user and host. If you add
+       a query term it will return the K most frequent commands that include it.
+    -users    Return the users in the database. You may use search criteria, eg
+      to find users who run a certain commands. By default this option searches
+      across all users and host unless you explicitly set them via flags.
     -s, -server    Run in server mode. Bashistdb currently binds to 0.0.0.0.
     -r, -remote SERVER_ADDRESS
        Run in network client mode, connect to server address. You may also set
        this with the BASHISTDB_REMOTE env variable. Current: ` + remoteEnv + `
     -p, -port PORT
-	Server port to listen on/connect to. You may also set this with the
-        BASHISTDB_PORT env variable. Current: ` + portEnv + `
+       Server port to listen on/connect to. You may also set this with the
+       BASHISTDB_PORT env variable. Current: ` + portEnv + `
     -k, -key PASSPHRASE
-	Passphrase to use for creating keys to encrypt network communications.
-        You may also set it via the BASHISTDB_KEY env variable.
+       Passphrase to use for creating keys to encrypt network communications.
+       You may also set it via the BASHISTDB_KEY env variable.
     -f, --format FORMAT
- 	How to format query output. Available types are:
-	` + FORMAT_ALL + ", " + FORMAT_BASH_HISTORY + ", " +
+       How to format query output. Available types are:
+      ` + FORMAT_ALL + ", " + FORMAT_BASH_HISTORY + ", " +
 		FORMAT_COMMAND_LINE + ", " + FORMAT_JSON + ", " +
 		FORMAT_LOG + ", " + FORMAT_TIMESTAMP + `
-        Format '` + FORMAT_BASH_HISTORY + `' can be used to restore your history file.
-        Default: ` + FORMAT_DEFAULT + `
+       Format '` + FORMAT_BASH_HISTORY + `' can be used to restore your history file.
+       Default: ` + FORMAT_DEFAULT + `
     -save    Write some settings (database, remote, port, key) to configuration
-        file: ` + confFile + `. These settings override environment variables.
+       file: ` + confFile + `. These settings override environment variables.
     -h, --help    This text.
     -init    Setup system for bashistdb: (1) Save settings to file. (2) Add to
-        bashrc functions to timestamp history and sent each command to bashistdb
-        (remote or local, taken from settings), (3) add a unique serial timestamp
-        to any untimestamped line in your bash_history.
+       bashrc functions to timestamp history and sent each command to bashistdb
+       (remote or local, taken from settings), (3) add a unique serial timestamp
+       to any untimestamped line in your bash_history.
     -local   Force local [db] mode, despite remote mode being set by env or conf.`)
 }

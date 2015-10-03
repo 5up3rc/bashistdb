@@ -101,7 +101,7 @@ func (r Result) AddRow(row int, datetime time.Time, user, host string, command s
 
 // Formatted returns the result in the desired format after performing any necessary adjustment.
 func (r Result) Formatted() []byte {
-	if conf.Format == conf.FORMAT_JSON {
+	if conf.QParams.Format == conf.FORMAT_JSON {
 		r.out.WriteString("\n]")
 	}
 	return r.out.Bytes()
