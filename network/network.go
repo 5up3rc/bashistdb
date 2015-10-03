@@ -33,14 +33,16 @@ import (
 	conf "github.com/andmarios/bashistdb/configuration"
 	"github.com/andmarios/bashistdb/database"
 	"github.com/andmarios/bashistdb/llog"
+	"github.com/andmarios/bashistdb/version"
 )
 
 // Message Types
 const (
-	RESULT  = "result"
-	HISTORY = "history"
-	STATS   = "stats"
-	QUERY   = "query"
+	RESULT  = "result"  // (query) results that should be printed
+	HISTORY = "history" // history to import
+	STATS   = "stats"   // ask for some stats
+	QUERY   = "query"   // query to run
+	LOGINFO = "info"    // results that should go to log.Info
 )
 
 type Message struct {
@@ -49,6 +51,7 @@ type Message struct {
 	User     string
 	Hostname string
 	QParams  conf.QueryParams
+	Version  string
 }
 
 var log *llog.Logger
@@ -104,24 +107,10 @@ func ClientMode() error {
 			return err
 		}
 
-		msg := Message{Type: HISTORY, Payload: history, User: conf.User, Hostname: conf.Hostname}
-
-		if err := encryptDispatch(conn, msg); err != nil {
-			return err
-		}
+		msg = Message{Type: HISTORY, Payload: history, User: conf.User,
+			Hostname: conf.Hostname}
 
 		log.Info.Println("Sent history.")
-
-		reply, err := receiveDecrypt(conn)
-		if err != nil {
-			return err
-		}
-
-		switch reply.Type {
-		case RESULT:
-			log.Info.Println("Received:", string(reply.Payload))
-		}
-		return nil
 	case conf.OP_STATS:
 		msg = Message{Type: STATS, User: conf.User, Hostname: conf.Hostname}
 	case conf.OP_QUERY:
@@ -129,6 +118,9 @@ func ClientMode() error {
 	default:
 		return errors.New("unknown function")
 	}
+
+	msg.Version = version.Version
+
 	if err := encryptDispatch(conn, msg); err != nil {
 		return err
 	}
@@ -139,9 +131,15 @@ func ClientMode() error {
 		return err
 	}
 
+	if reply.Version != version.Version {
+		log.Info.Println("Server runs different bashistdb version from client:", reply.Version)
+	}
+
 	switch reply.Type {
 	case RESULT:
 		fmt.Println(string(reply.Payload))
+	case LOGINFO:
+		log.Info.Println("Received:", string(reply.Payload))
 	}
 	return nil
 }
@@ -154,6 +152,9 @@ func handleConn(conn net.Conn) {
 	if err != nil {
 		log.Info.Println(err, "["+conn.RemoteAddr().String()+"]")
 		return
+	}
+	if msg.Version != version.Version {
+		log.Info.Println("Client runs different bashistdb version from server:", msg.Version)
 	}
 
 	var result []byte
@@ -176,7 +177,7 @@ func handleConn(conn net.Conn) {
 		if err != nil {
 			log.Fatalln(err)
 		}
-		result := res1
+		result = res1
 		result = append(result, []byte("\n\n")...)
 		result = append(result, res2...)
 		log.Info.Println("Client asked for some stats.")
@@ -189,7 +190,10 @@ func handleConn(conn net.Conn) {
 			msg.QParams.User, msg.QParams.Host, msg.QParams.Command, msg.QParams.Format)
 	}
 
-	reply := Message{Type: RESULT, Payload: result}
+	reply := Message{Type: RESULT, Payload: result, Version: version.Version}
+	if msg.Type == HISTORY {
+		reply.Type = LOGINFO
+	}
 	if err := encryptDispatch(conn, reply); err != nil {
 		log.Println(err)
 	}

@@ -25,6 +25,7 @@ import (
 	"github.com/andmarios/bashistdb/local"
 	"github.com/andmarios/bashistdb/network"
 	"github.com/andmarios/bashistdb/setup"
+	"github.com/andmarios/bashistdb/version"
 )
 
 var log *llog.Logger
@@ -34,7 +35,7 @@ func main() {
 
 	switch conf.Mode {
 	case conf.MODE_PRINT_VERSION:
-		fmt.Println("bashistdb v" + version)
+		fmt.Println("bashistdb v" + version.Version)
 		fmt.Println("https://github.com/andmarios/bashistdb")
 	case conf.MODE_SERVER:
 		if err := network.ServerMode(); err != nil {

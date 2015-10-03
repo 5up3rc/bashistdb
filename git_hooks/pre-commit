@@ -9,8 +9,8 @@
 
 HASH="$(git rev-parse --short HEAD)"
 COMMITS="$(git rev-list HEAD --count bashistdb.go database/database.go network/network.go llog/llog.go configuration/configuration.go result/result.go local/local.go)"
-sed 's/version = .*/version = "'"$COMMITS"'.'"$HASH"'+"/' -i version.go
-git add version.go
+sed 's/Version = .*/Version = "'"$COMMITS"'.'"$HASH"'+"/' -i version/version.go
+git add version/version.go
 
 gofiles=$(git diff --cached --name-only --diff-filter=ACM | grep '.go$')
 [ -z "$gofiles" ] && exit 0
