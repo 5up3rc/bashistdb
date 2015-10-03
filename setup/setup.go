@@ -31,7 +31,8 @@ import (
 )
 
 const appendLines = `export HISTTIMEFORMAT="%FT%T%z "
-export PROMPT_COMMAND="${PROMPT_COMMAND}; (history 1 | bashistdb 2>/dev/null &)"
+[ ! -z "${PROMPT_COMMAND}" ] && export PROMPT_COMMAND="${PROMPT_COMMAND};"
+export PROMPT_COMMAND="${PROMPT_COMMAND} (history 1 | bashistdb 2>/dev/null &)"
 `
 
 var log *llog.Logger
