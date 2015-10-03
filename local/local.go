@@ -52,12 +52,12 @@ func Run() error {
 		// as we may run it every time we hit ENTER in a bash prompt.
 		log.Info.Println(stats)
 	case conf.OP_STATS:
-		res, err := db.TopK("%", "%", "%", 20)
+		res, err := db.TopK(conf.QueryParams{User: "%", Host: "%", Command: "%", Kappa: 20})
 		if err != nil {
 			return err
 		}
 		fmt.Println(string(res))
-		res, err = db.LastK("%", "%", "%", 10)
+		res, err = db.LastK(conf.QueryParams{User: "%", Host: "%", Command: "%", Kappa: 10})
 		if err != nil {
 			return err
 		}

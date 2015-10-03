@@ -38,13 +38,9 @@ var (
 	Address   string       // Address is the remote server's address for client mode or server's address for server mode
 	Database  string       // Database is the filename of the sqlite database
 	Key       []byte       // Key it the user passphrase to generate keys for net comms
-	// These maybe should go to query params:
-	User     string // User is the username or username search term
-	Hostname string // Hostname is the hostname or hostname search term
-	Query    string // Query is the command line search term
-	Format   string // Format is the output format for the query results
-
-	QParams QueryParams // Parameters to query.
+	User      string       // User is the username detected or explicitly set
+	Hostname  string       // Hostname is the hostname detected or explicitly set
+	QParams   QueryParams  // Parameters to query
 )
 
 // Output Formats
@@ -92,11 +88,12 @@ const (
 // Depending on query type, some fields may not be used.
 type QueryParams struct {
 	Type    string // Query type
-	TypeVal int    // If topk or lastk, we store k here
+	Kappa   int    // If topk or lastk, we store k here
 	User    string // Search User
 	Host    string // Search Host
 	Format  string // Return format
 	Command string // Search Term for command line field
+	Unique  bool   // Return unique command lines
 }
 
 // Available query types
@@ -257,7 +254,7 @@ func init() {
 	flag.BoolVar(&globalSet, "g", false, "global: '-user % -host %'")
 	flag.BoolVar(&writeconfSet, "save", false, "write ~/.bashistdb.conf")
 	flag.BoolVar(&setupSet, "init", false, "set-up system to use bashistdb")
-	flag.BoolVar(&uniqueSet, "unique", false, "show unique (distinct) command lines") //TODO
+	flag.BoolVar(&uniqueSet, "unique", false, "show unique (distinct) command lines")
 	flag.IntVar(&topk, "topk", 20, "return K most used command lines")
 	flag.IntVar(&lastk, "lastk", 20, "return K most recent command lines")
 	flag.BoolVar(&usersSet, "users", false, "show users in database")
@@ -311,11 +308,11 @@ func init() {
 	case topkSet:
 		Operation = OP_QUERY
 		QParams.Type = QUERY_TOPK
-		QParams.TypeVal = topk
+		QParams.Kappa = topk
 	case lastkSet:
 		Operation = OP_QUERY
 		QParams.Type = QUERY_LASTK
-		QParams.TypeVal = lastk
+		QParams.Kappa = lastk
 	case usersSet:
 		Operation = OP_QUERY
 		QParams.Type = QUERY_USERS
@@ -336,6 +333,12 @@ func init() {
 		} else {
 			Log.Info.Println("The specified format doesn't exist. Reverting to default:", FORMAT_DEFAULT)
 			QParams.Format = FORMAT_DEFAULT
+		}
+		switch uniqueSet {
+		case true:
+			QParams.Unique = true
+		default:
+			QParams.Unique = false
 		}
 	}
 
@@ -404,9 +407,7 @@ func init() {
 	}
 
 	// Prepare query term. Join non-flag args and prefix-suffix with wildcard
-	Query = strings.Join(flag.Args(), " ")
-	Query = "%" + Query + "%" // Grep like behaviour
-	QParams.Command = Query
+	QParams.Command = "%" + strings.Join(flag.Args(), " ") + "%" // Grep like behaviour
 
 	if Operation == OP_QUERY {
 		Log.Info.Printf("Your query parameters are user: %s, host: %s, command line: %s.\n", QParams.User, QParams.Host, QParams.Command)
@@ -485,6 +486,8 @@ Available options:
        operators (%, _) work but unlike query we search for the exact term.
        Current: ` + hostEnv + `
     -g     Sets user and host to % for query operation. (equiv: -user % -host %)
+    -unique    If the query type permits, return unique results for the command
+       line field.
     -lastk K
        Return the K most recent commands for the set user and host. If you add
        a query term it will return the K most recent commands that include it.

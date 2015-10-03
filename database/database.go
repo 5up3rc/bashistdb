@@ -235,11 +235,13 @@ func (d Database) AddFromBuffer(r *bufio.Reader, user, host string) (stats strin
 }
 
 // TopK returns the k most frequent command lines in history
-func (d Database) TopK(user, host, command string, k int) (res []byte, e error) {
+func (d Database) TopK(qp conf.QueryParams) (res []byte, e error) {
 	var result bytes.Buffer
-	result.WriteString(fmt.Sprintf("Top-%d commands:", k))
-	rows, e := d.Query("SELECT command, count(*) as count FROM history WHERE user LIKE ? AND host LIKE ? AND command LIKE ? GROUP BY command ORDER BY count DESC LIMIT ?",
-		user, host, command, k)
+	result.WriteString(fmt.Sprintf("Top-%d commands:", qp.Kappa))
+	rows, e := d.Query(`SELECT command, count(*) as count FROM history
+                               WHERE user LIKE ? AND host LIKE ? AND command LIKE ? ESCAPE '\'
+                               GROUP BY command ORDER BY count DESC LIMIT ?`,
+		qp.User, qp.Host, qp.Command, qp.Kappa)
 	if e != nil {
 		return result.Bytes(), e
 	}
@@ -254,11 +256,25 @@ func (d Database) TopK(user, host, command string, k int) (res []byte, e error) 
 }
 
 // LastK returns the k most recent command lines in history
-func (d Database) LastK(user, host, command string, k int) (res []byte, e error) {
+func (d Database) LastK(qp conf.QueryParams) (res []byte, e error) {
 	var result bytes.Buffer
-	result.WriteString(fmt.Sprintf("%d most recent commands:", k))
-	rows, e := d.Query("SELECT  datetime, command FROM history WHERE user LIKE ? AND host LIKE ? AND command LIKE ? ORDER BY datetime DESC LIMIT ?",
-		user, host, command, k)
+	result.WriteString(fmt.Sprintf("%d most recent commands:", qp.Kappa))
+	var rows *sql.Rows
+	switch qp.Unique {
+	case true:
+		rows, e = d.Query(`SELECT * FROM
+                                      (SELECT datetime, command FROM history
+                                         WHERE user LIKE ? AND host LIKE ? AND command LIKE ? ESCAPE '\'
+                                         GROUP BY command
+                                         ORDER BY datetime DESC LIMIT ?)
+                                      ORDER BY datetime ASC`,
+			qp.User, qp.Host, qp.Command, qp.Kappa)
+	default:
+		rows, e = d.Query(`SELECT datetime, command FROM history
+                                      WHERE user LIKE ? AND host LIKE ? AND command LIKE ? ESCAPE '\'
+                                      ORDER BY datetime DESC LIMIT ?`,
+			qp.User, qp.Host, qp.Command, qp.Kappa)
+	}
 	if e != nil {
 		return result.Bytes(), e
 	}
@@ -268,7 +284,7 @@ func (d Database) LastK(user, host, command string, k int) (res []byte, e error)
 		var command string
 		var time time.Time
 		rows.Scan(&time, &command)
-		result.WriteString(fmt.Sprintf("\n%s %s", time, command))
+		result.WriteString(fmt.Sprintf("\n%s %s", time.Format(RFC3339alt), command))
 	}
 	return result.Bytes(), e
 }
@@ -322,7 +338,7 @@ func migrate(d *sql.DB) error {
                              datetime TEXT PRIMARY KEY,
                              remote   TEXT);
                          INSERT INTO connlog_new
-                           SELECT datetime, remote FROM connlog;
+                            SELECT datetime, remote FROM connlog;
                          DROP TABLE connlog;
                          ALTER TABLE connlog_new RENAME TO 'connlog';
                          CREATE TABLE rlookup (
@@ -331,9 +347,9 @@ func migrate(d *sql.DB) error {
                          );
                          CREATE VIEW connections AS
                              SELECT datetime, remote, reverse
-                               FROM connlog AS c
-                                 LEFT JOIN rlookup AS r
-                                   ON c.remote = r.ip;`
+                                FROM connlog AS c
+                                LEFT JOIN rlookup AS r
+                                ON c.remote = r.ip;`
 		if _, err = tx.Exec(stmt); err != nil {
 			return err
 		}
@@ -357,16 +373,26 @@ func migrate(d *sql.DB) error {
 }
 
 // DefaultQuery returns history within the search criteria in the format requested
-// TODO, BUG: format is not thread safe for server mode (conf.Format variable)
-func (d Database) DefaultQuery(user, hostname, query, format string) ([]byte, error) {
-	rows, err := d.Query(`SELECT rowid, datetime, user, host, command FROM history WHERE user LIKE ? AND host LIKE ? AND command LIKE ? ESCAPE '\'`,
-		user, hostname, query)
+func (d Database) DefaultQuery(qp conf.QueryParams) ([]byte, error) {
+	var rows *sql.Rows
+	var err error
+	switch qp.Unique {
+	case true:
+		rows, err = d.Query(`SELECT rowid, datetime, user, host, command FROM history
+                                        WHERE user LIKE ? AND host LIKE ? AND command LIKE ? ESCAPE '\'
+                                        GROUP BY command ORDER BY DATETIME ASC`,
+			qp.User, qp.Host, qp.Command)
+	default:
+		rows, err = d.Query(`SELECT rowid, datetime, user, host, command FROM history
+                                         WHERE user LIKE ? AND host LIKE ? AND command LIKE ? ESCAPE '\'`,
+			qp.User, qp.Host, qp.Command)
+	}
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	res := result.New(format)
+	res := result.New(qp.Format)
 	for rows.Next() {
 		var user, host, command string
 		var t time.Time
@@ -382,22 +408,24 @@ func (d Database) DefaultQuery(user, hostname, query, format string) ([]byte, er
 func (d Database) RunQuery(p conf.QueryParams) ([]byte, error) {
 	switch p.Type {
 	case conf.QUERY:
-		return d.DefaultQuery(p.User, p.Host, p.Command, p.Format)
+		return d.DefaultQuery(p)
 	case conf.QUERY_LASTK:
-		return d.LastK(p.User, p.Host, p.Command, p.TypeVal)
+		return d.LastK(p)
 	case conf.QUERY_TOPK:
-		return d.TopK(p.User, p.Host, p.Command, p.TypeVal)
+		return d.TopK(p)
 	case conf.QUERY_USERS:
-		return d.Users(p.User, p.Host, p.Command)
+		return d.Users(p)
 	}
 
 	return []byte{}, errors.New("Unknown query type.")
 }
 
-func (d Database) Users(user, host, command string) (res []byte, e error) {
+func (d Database) Users(qp conf.QueryParams) (res []byte, e error) {
 	var result bytes.Buffer
 	result.WriteString(fmt.Sprintf("Unique user-hosts pairs:"))
-	rows, e := d.Query("SELECT distinct(user), host FROM history WHERE user LIKE ? AND host LIKE ? AND command LIKE ?", user, host, command)
+	rows, e := d.Query(`SELECT distinct(user), host FROM history
+                               WHERE user LIKE ? AND host LIKE ? AND command LIKE ? ESCAPE '\'`,
+		qp.User, qp.Host, qp.Command)
 	if e != nil {
 		return result.Bytes(), e
 	}

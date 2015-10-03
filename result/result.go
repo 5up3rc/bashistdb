@@ -46,6 +46,9 @@ type Result struct {
 	format  string
 }
 
+// Golang's RFC3339 does not comply with all RFC3339 representations
+const RFC3339alt = "2006-01-02T15:04:05-0700"
+
 // New returns a new Result
 func New(format string) *Result {
 	var out bytes.Buffer
@@ -85,9 +88,9 @@ func (r Result) AddRow(row int, datetime time.Time, user, host string, command s
 	case conf.FORMAT_TIMESTAMP:
 		f = fmt.Sprintf(FORMAT_TIMESTAMP_S, datetime, command)
 	case conf.FORMAT_LOG:
-		f = fmt.Sprintf(FORMAT_LOG_S, datetime, user, host, command)
+		f = fmt.Sprintf(FORMAT_LOG_S, datetime.Format(RFC3339alt), user, host, command)
 	case conf.FORMAT_JSON:
-		b, _ := json.Marshal(rowJson{row, datetime.Format(time.RFC3339), user, host, command})
+		b, _ := json.Marshal(rowJson{row, datetime.Format(RFC3339alt), user, host, command})
 		_, _ = r.out.Write(b)
 		f = ""
 	case conf.FORMAT_COMMAND_LINE:

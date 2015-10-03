@@ -168,11 +168,11 @@ func handleConn(conn net.Conn) {
 		}
 		log.Info.Println("Client sent history: ", res)
 	case STATS:
-		res1, err := db.TopK("%", "%", "%", 20)
+		res1, err := db.TopK(conf.QueryParams{User: "%", Host: "%", Command: "%", Kappa: 20})
 		if err != nil {
 			log.Fatalln(err)
 		}
-		res2, err := db.LastK("%", "%", "%", 10)
+		res2, err := db.LastK(conf.QueryParams{User: "%", Host: "%", Command: "%", Kappa: 10})
 		if err != nil {
 			log.Fatalln(err)
 		}
