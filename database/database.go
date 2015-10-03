@@ -270,9 +270,11 @@ func (d Database) LastK(qp conf.QueryParams) (res []byte, e error) {
                                       ORDER BY datetime ASC`,
 			qp.User, qp.Host, qp.Command, qp.Kappa)
 	default:
-		rows, e = d.Query(`SELECT datetime, command FROM history
-                                      WHERE user LIKE ? AND host LIKE ? AND command LIKE ? ESCAPE '\'
-                                      ORDER BY datetime DESC LIMIT ?`,
+		rows, e = d.Query(`SELECT * FROM
+                                      (SELECT datetime, command FROM history
+                                         WHERE user LIKE ? AND host LIKE ? AND command LIKE ? ESCAPE '\'
+                                         ORDER BY datetime DESC LIMIT ?)
+                                   ORDER BY datetime ASC`,
 			qp.User, qp.Host, qp.Command, qp.Kappa)
 	}
 	if e != nil {
