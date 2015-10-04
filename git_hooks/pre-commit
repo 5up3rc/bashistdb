@@ -8,8 +8,8 @@
 # ln -s ../../git_hooks/pre-commit .git/hooks/pre-commit
 
 HASH="$(git rev-parse --short HEAD)"
-COMMITS="$(git rev-list HEAD --count bashistdb.go database/database.go network/network.go \
- llog/llog.go configuration/configuration.go result/result.go local/local.go setup/setup.go)"
+COMMITS="$(git rev-list HEAD --count bashistdb.go debug.go database/*.go network/*.go \
+ llog/*.go configuration/*.go result/*.go local/*.go setup/*.go)"
 sed 's/Version = .*/Version = "'"$COMMITS"'.'"$HASH"'+"/' -i version/version.go
 git add version/version.go
 

@@ -11,10 +11,12 @@ import (
 )
 
 func init() {
-	Version += "-pprof"
-	// Set up debug server
-	go func() {
-		fmt.Println(http.ListenAndServe("localhost:6060", nil))
-	}()
-	conf.Log.Info.Print("pprof is running at localhost:6060")
+	if conf.Mode == conf.MODE_SERVER { // Currently debug only needed for server
+		Version += "-pprof"
+		// Set up debug server
+		go func() {
+			fmt.Println(http.ListenAndServe("localhost:6060", nil))
+		}()
+		conf.Log.Info.Print("pprof is running at localhost:6060")
+	}
 }
