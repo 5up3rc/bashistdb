@@ -23,11 +23,16 @@ import (
 	"bytes"
 	"encoding/gob"
 	"net"
+	"runtime/debug"
 
-	"github.com/andmarios/crypto/nacl/padsecret"
+	"github.com/andmarios/crypto/nacl/saltsecret"
 
 	conf "github.com/andmarios/bashistdb/configuration"
 )
+
+func init() {
+	conf.Log.Debug.Println("Lowmem build.")
+}
 
 func encryptDispatch(conn net.Conn, m Message) error {
 	// We want to sent encrypted data.
@@ -37,8 +42,7 @@ func encryptDispatch(conn net.Conn, m Message) error {
 
 	// Create encrypter
 	var encMsg bytes.Buffer
-	encrypter, err := padsecret.NewWriter(&encMsg, string(conf.Key),
-		"bashistdb-pad-bashistdb-pad-bashistdb", padsecret.ENCRYPT, true)
+	encrypter, err := saltsecret.NewWriter(&encMsg, conf.Key, saltsecret.ENCRYPT, true)
 	if err != nil {
 		return err
 	}
@@ -59,7 +63,7 @@ func encryptDispatch(conn net.Conn, m Message) error {
 	if err = dispatch.Encode(encMsg.Bytes()); err != nil {
 		return err
 	}
-
+	debug.FreeOSMemory()
 	return nil
 }
 
@@ -76,8 +80,7 @@ func receiveDecrypt(conn net.Conn) (Message, error) {
 
 	// Create decrypter and pass it the encrypted message
 	r := bytes.NewReader(*encMsg)
-	decrypter, err := padsecret.NewReader(r, string(conf.Key),
-		"bashistdb-pad-bashistdb-pad-bashistdb", padsecret.DECRYPT, false)
+	decrypter, err := saltsecret.NewReader(r, conf.Key, saltsecret.DECRYPT, false)
 	if err != nil {
 		return Message{}, err
 	}
@@ -88,6 +91,6 @@ func receiveDecrypt(conn net.Conn) (Message, error) {
 	if err = dec.Decode(msg); err != nil {
 		return Message{}, err
 	}
-
+	debug.FreeOSMemory()
 	return *msg, nil
 }
