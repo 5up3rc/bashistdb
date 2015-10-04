@@ -178,7 +178,8 @@ var parseLine = regexp.MustCompile(`^ *[0-9]+\*? *([0-9T:+-]{24,24}) *(.*)`)
 
 // A parseExportLine parses export formatted output from bashistdb:
 //     USER HOSTNAME RFC3339_DATETIME COMMAND
-var parseExportLine = regexp.MustCompile(`^([a-zA-Z_][a-zA-Z0-9_-]*) ([a-zA-Z0-9][a-zA-Z0-9_.]*) *([0-9T:+-]{24,24}) *(.*)`)
+//([a-zA-Z_][a-zA-Z0-9_-]*) ([a-zA-Z0-9][a-zA-Z0-9.-]*) *([0-9T:+-]{24,24}) *(.*)
+var parseExportLine = regexp.MustCompile(`^([a-zA-Z_][a-zA-Z0-9_-]*) ([a-zA-Z0-9][a-zA-Z0-9.-]*) *([0-9T:+-]{24,24}) *(.*)`)
 
 // AddFromBuffer reads from a buffered Reader and scans for lines that match
 // history command's structure:
