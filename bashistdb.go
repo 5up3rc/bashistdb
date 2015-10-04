@@ -29,13 +29,14 @@ import (
 )
 
 var log *llog.Logger
+var Version = version.Version // a debug build will append pprof to this
 
 func main() {
 	log = conf.Log
 
 	switch conf.Mode {
 	case conf.MODE_PRINT_VERSION:
-		fmt.Println("bashistdb v" + version.Version)
+		fmt.Println("bashistdb v" + Version)
 		fmt.Println("https://github.com/andmarios/bashistdb")
 	case conf.MODE_SERVER:
 		if err := network.ServerMode(); err != nil {

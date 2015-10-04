@@ -489,7 +489,7 @@ Available options:
        Current: ` + hostEnv + `
     -g     Sets user and host to % for query operation. (equiv: -user % -host %)
     -unique    If the query type permits, return unique results for the command
-       line field.
+       line field (returns the most recent execution of each command).
     -lastk K
        Return the K most recent commands for the set user and host. If you add
        a query term it will return the K most recent commands that include it.

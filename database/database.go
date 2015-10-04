@@ -270,6 +270,7 @@ func (d Database) TopK(qp conf.QueryParams) (res []byte, e error) {
 		return result.Bytes(), e
 	}
 	defer rows.Close()
+
 	for rows.Next() {
 		var command string
 		var count int
