@@ -51,6 +51,7 @@ const (
 	FORMAT_TIMESTAMP    = "timestamp"
 	FORMAT_LOG          = "log"
 	FORMAT_JSON         = "json"
+	FORMAT_EXPORT       = "export"
 	FORMAT_DEFAULT      = FORMAT_COMMAND_LINE
 )
 
@@ -61,6 +62,7 @@ var availableFormats = map[string]bool{
 	FORMAT_TIMESTAMP:    true,
 	FORMAT_LOG:          true,
 	FORMAT_JSON:         true,
+	FORMAT_EXPORT:       true,
 }
 
 // Run Modes, you may only add entries at the end.
@@ -511,8 +513,10 @@ Available options:
        How to format query output. Available types are:
       ` + FORMAT_ALL + ", " + FORMAT_BASH_HISTORY + ", " +
 		FORMAT_COMMAND_LINE + ", " + FORMAT_JSON + ", " +
-		FORMAT_LOG + ", " + FORMAT_TIMESTAMP + `
+		FORMAT_LOG + ", " + FORMAT_TIMESTAMP + ", " + FORMAT_EXPORT + `
        Format '` + FORMAT_BASH_HISTORY + `' can be used to restore your history file.
+       Format '` + FORMAT_EXPORT + `' can be used to pipe your history to another
+       instance of bashistdb, while retaining user and host of each command.
        Default: ` + FORMAT_DEFAULT + `
     -save    Write some settings (database, remote, port, key) to configuration
        file: ` + confFile + `. These settings override environment variables.

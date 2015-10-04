@@ -31,10 +31,11 @@ import (
 const (
 	FORMAT_BASH_HISTORY_S = "#%d\n%s"
 	FORMAT_ALL_S          = "%05d | %s | % 10s | % 10s | %s"
-	FORMAT_COMMAND_LINE_S = "%s"
+	FORMAT_COMMAND_LINE_S = "%d %s"
 	FORMAT_TIMESTAMP_S    = "%s: %s"
 	FORMAT_LOG_S          = "%s %s@%s %s"
 	FORMAT_JSON_S         = "" // We use encoding/json for JSON
+	FORMAT_EXPORT_S       = "%s %s %s %s"
 )
 
 // A Result is used to store the formatted output of a query.
@@ -93,10 +94,12 @@ func (r Result) AddRow(row int, datetime time.Time, user, host string, command s
 		b, _ := json.Marshal(rowJson{row, datetime.Format(RFC3339alt), user, host, command})
 		_, _ = r.out.Write(b)
 		f = ""
+	case conf.FORMAT_EXPORT:
+		f = fmt.Sprintf(FORMAT_EXPORT_S, user, host, datetime.Format(RFC3339alt), command)
 	case conf.FORMAT_COMMAND_LINE:
 		fallthrough
 	default:
-		f = fmt.Sprintf(FORMAT_COMMAND_LINE_S, command)
+		f = fmt.Sprintf(FORMAT_COMMAND_LINE_S, row, command)
 
 	}
 	r.out.WriteString(f)

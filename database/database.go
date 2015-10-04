@@ -32,6 +32,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	conf "github.com/andmarios/bashistdb/configuration"
@@ -175,6 +176,10 @@ func (d Database) AddRecord(user, host, command string, time time.Time) error {
 //     LINENUM RFC3339_DATETIME COMMAND
 var parseLine = regexp.MustCompile(`^ *[0-9]+\*? *([0-9T:+-]{24,24}) *(.*)`)
 
+// A parseExportLine parses export formatted output from bashistdb:
+//     USER HOSTNAME RFC3339_DATETIME COMMAND
+var parseExportLine = regexp.MustCompile(`^([a-zA-Z_][a-zA-Z0-9_-]*) ([a-zA-Z0-9][a-zA-Z0-9_.]*) *([0-9T:+-]{24,24}) *(.*)`)
+
 // AddFromBuffer reads from a buffered Reader and scans for lines that match
 // history command's structure:
 //     LINENUM RFC3339_DATETIME COMMAND
@@ -187,6 +192,8 @@ func (d Database) AddFromBuffer(r *bufio.Reader, user, host string) (stats strin
 	tx, _ := d.Begin()
 	stmt := tx.Stmt(d.insert)
 	total, failed := 0, 0
+	lineFormat := 1 // 1 means default history format, 3 is for export format
+	var once sync.Once
 	for {
 		historyLine, err := r.ReadString('\n')
 		total++
@@ -200,24 +207,40 @@ func (d Database) AddFromBuffer(r *bufio.Reader, user, host string) (stats strin
 
 		args := parseLine.FindStringSubmatch(historyLine)
 		if len(args) != 3 {
-			log.Info.Println("Could't decode line. Skipping:", historyLine)
-			failed++
-			continue
+			args = parseExportLine.FindStringSubmatch(historyLine)
+			if len(args) != 5 {
+				log.Info.Println("Could't decode line, unknown format. Skipping:", historyLine)
+				failed++
+				continue
+			}
+			once.Do(func() { log.Info.Println("Bashistdb export format detected.") })
+			lineFormat = 3
 		}
-		time, err := time.Parse(RFC3339alt, args[1])
+
+		time, err := time.Parse(RFC3339alt, args[lineFormat])
 		if err != nil {
 			tx.Rollback()
 			return "", err
 		}
 
-		_, err = stmt.Exec(user, host, strings.TrimSuffix(args[2], "\n"), time)
+		switch lineFormat {
+		case 1:
+			_, err = stmt.Exec(user, host, strings.TrimSuffix(args[2], "\n"), time)
+		case 3:
+			_, err = stmt.Exec(args[1], args[2], strings.TrimSuffix(args[4], "\n"), time)
+		}
 		if err != nil {
 			// If failed due to duplicate primary key, then ignore error
 			// We expect for ease of use, the user to resubmit the whole
 			// history from time to time.
 			if driverErr, ok := err.(sqlite3.Error); ok {
 				if driverErr.ExtendedCode == sqlite3.ErrConstraintPrimaryKey {
-					log.Debug.Println("Duplicate entry. Ignoring.", user, host, strings.TrimSuffix(args[2], "\n"), time)
+					switch lineFormat {
+					case 1:
+						log.Debug.Println("Duplicate entry. Ignoring.", user, host, strings.TrimSuffix(args[2], "\n"), time)
+					case 3:
+						log.Debug.Println("Duplicate entry. Ignoring.", args[1], args[2], strings.TrimSuffix(args[4], "\n"), time)
+					}
 					failed++
 				} else {
 					tx.Rollback()
