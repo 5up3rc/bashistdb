@@ -193,7 +193,7 @@ func setVisitedFlags(f *flag.Flag) {
 		formatSet = true
 	case "topk":
 		topkSet = true
-	case "lastk":
+	case "lastk", "tail":
 		lastkSet = true
 	}
 }
