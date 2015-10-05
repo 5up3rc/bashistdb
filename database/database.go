@@ -23,7 +23,6 @@ package database
 
 import (
 	"bufio"
-	"bytes"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -37,7 +36,6 @@ import (
 
 	conf "github.com/andmarios/bashistdb/configuration"
 	"github.com/andmarios/bashistdb/llog"
-	"github.com/andmarios/bashistdb/result"
 	"github.com/mattn/go-sqlite3"
 )
 
@@ -258,62 +256,6 @@ func (d Database) AddFromBuffer(r *bufio.Reader, user, host string) (stats strin
 	return stats, nil
 }
 
-// TopK returns the k most frequent command lines in history
-func (d Database) TopK(qp conf.QueryParams) (res []byte, e error) {
-	var result bytes.Buffer
-	rows, e := d.Query(`SELECT command, count(*) as count FROM history
-                               WHERE user LIKE ? AND host LIKE ? AND command LIKE ? ESCAPE '\'
-                               GROUP BY command ORDER BY count DESC LIMIT ?`,
-		qp.User, qp.Host, qp.Command, qp.Kappa)
-	if e != nil {
-		return result.Bytes(), e
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var command string
-		var count int
-		rows.Scan(&command, &count)
-		result.WriteString(fmt.Sprintf("\n%d: %s", count, command))
-	}
-	return result.Bytes(), e
-}
-
-// LastK returns the k most recent command lines in history
-func (d Database) LastK(qp conf.QueryParams) (res []byte, e error) {
-	var result bytes.Buffer
-	var rows *sql.Rows
-	switch qp.Unique {
-	case true:
-		rows, e = d.Query(`SELECT * FROM
-                                      (SELECT datetime, command FROM history
-                                         WHERE user LIKE ? AND host LIKE ? AND command LIKE ? ESCAPE '\'
-                                         GROUP BY command
-                                         ORDER BY datetime DESC LIMIT ?)
-                                      ORDER BY datetime ASC`,
-			qp.User, qp.Host, qp.Command, qp.Kappa)
-	default:
-		rows, e = d.Query(`SELECT * FROM
-                                      (SELECT datetime, command FROM history
-                                         WHERE user LIKE ? AND host LIKE ? AND command LIKE ? ESCAPE '\'
-                                         ORDER BY datetime DESC LIMIT ?)
-                                   ORDER BY datetime ASC`,
-			qp.User, qp.Host, qp.Command, qp.Kappa)
-	}
-	if e != nil {
-		return result.Bytes(), e
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var command string
-		var time time.Time
-		rows.Scan(&time, &command)
-		result.WriteString(fmt.Sprintf("\n%s %s", time.Format(RFC3339alt), command))
-	}
-	return result.Bytes(), e
-}
-
 // LogConn logs the remote's IP address and connection time into connlog table.
 // Also if it can't find a reverse lookup for the IP address inside table rlookup,
 // it performs it asynchronously. Reverse lookup may fail, but we don't care.
@@ -395,126 +337,4 @@ func migrate(d *sql.DB) error {
 	}
 
 	return nil
-}
-
-// DefaultQuery returns history within the search criteria in the format requested
-func (d Database) DefaultQuery(qp conf.QueryParams) ([]byte, error) {
-	var rows *sql.Rows
-	var err error
-	switch qp.Unique {
-	case true:
-		rows, err = d.Query(`SELECT rowid, datetime, user, host, command FROM history
-                                        WHERE user LIKE ? AND host LIKE ? AND command LIKE ? ESCAPE '\'
-                                        GROUP BY command ORDER BY DATETIME ASC`,
-			qp.User, qp.Host, qp.Command)
-	default:
-		rows, err = d.Query(`SELECT rowid, datetime, user, host, command FROM history
-                                         WHERE user LIKE ? AND host LIKE ? AND command LIKE ? ESCAPE '\'`,
-			qp.User, qp.Host, qp.Command)
-	}
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	res := result.New(qp.Format)
-	for rows.Next() {
-		var user, host, command string
-		var t time.Time
-		var row int
-		rows.Scan(&row, &t, &user, &host, &command)
-		res.AddRow(row, t, user, host, command)
-	}
-	// Return the result without the newline at the end.
-	return res.Formatted(), nil
-}
-
-// RunQuery is a wrapper around various queries.
-func (d Database) RunQuery(p conf.QueryParams) ([]byte, error) {
-	switch p.Type {
-	case conf.QUERY:
-		return d.DefaultQuery(p)
-	case conf.QUERY_LASTK:
-		return d.LastK(p)
-	case conf.QUERY_TOPK:
-		return d.TopK(p)
-	case conf.QUERY_USERS:
-		return d.Users(p)
-	case conf.QUERY_DEMO:
-		return d.Demo(p)
-	}
-
-	return []byte{}, errors.New("Unknown query type.")
-}
-
-// Users returns unique user@host pairs from the database.
-func (d Database) Users(qp conf.QueryParams) (res []byte, e error) {
-	var result bytes.Buffer
-	result.WriteString(fmt.Sprintf("Unique user-hosts pairs:"))
-	rows, e := d.Query(`SELECT distinct(user), host FROM history
-                               WHERE user LIKE ? AND host LIKE ? AND command LIKE ? ESCAPE '\'`,
-		qp.User, qp.Host, qp.Command)
-	if e != nil {
-		return result.Bytes(), e
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var user string
-		var host string
-		rows.Scan(&user, &host)
-		result.WriteString(fmt.Sprintf("\n%s@%s", user, host))
-	}
-	return result.Bytes(), e
-}
-
-//
-func (d Database) Demo(qp conf.QueryParams) (res []byte, e error) {
-	var result bytes.Buffer
-
-	var numUsers int
-	err := d.QueryRow("SELECT count(*) FROM (SELECT distinct(user), host FROM history)").Scan(&numUsers)
-	if err != nil {
-		return result.Bytes(), err
-	}
-
-	var numHosts int
-	err = d.QueryRow("SELECT count(distinct(host)) FROM history").Scan(&numHosts)
-	if err != nil {
-		return result.Bytes(), err
-	}
-
-	var numLines int
-	err = d.QueryRow("SELECT count(command) FROM history").Scan(&numLines)
-	if err != nil {
-		return result.Bytes(), err
-	}
-
-	var numUniqueLines int
-	err = d.QueryRow("SELECT count(distinct(command)) FROM history").Scan(&numUniqueLines)
-	if err != nil {
-		return result.Bytes(), err
-	}
-
-	qp.Kappa = 15
-	restop, err := d.TopK(qp)
-	if err != nil {
-		return result.Bytes(), err
-	}
-
-	qp.Kappa = 10
-	reslast, err := d.LastK(qp)
-	if err != nil {
-		return result.Bytes(), err
-	}
-
-	result.WriteString(fmt.Sprintf("There are %d command lines (%d unique) in your database from %d users across %d hosts.\n\n", numLines, numUniqueLines, numUsers, numHosts))
-
-	result.WriteString(fmt.Sprintf("Top-15 commands for user %s@%s:", qp.User, qp.Host))
-	result.Write(restop)
-
-	result.WriteString(fmt.Sprintf("\n\nLast 10 commands user %s@%s ran:", qp.User, qp.Host))
-	result.Write(reslast)
-
-	return result.Bytes(), nil
 }
