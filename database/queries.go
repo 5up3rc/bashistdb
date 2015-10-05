@@ -33,24 +33,24 @@ import (
 )
 
 // TopK returns the k most frequent command lines in history
-func (d Database) TopK(qp conf.QueryParams) (res []byte, e error) {
-	var result bytes.Buffer
-	rows, e := d.Query(`SELECT command, count(*) as count FROM history
+func (d Database) TopK(qp conf.QueryParams) ([]byte, error) {
+	rows, err := d.Query(`SELECT command, count(*) as count FROM history
                                WHERE user LIKE ? AND host LIKE ? AND command LIKE ? ESCAPE '\'
                                GROUP BY command ORDER BY count DESC LIMIT ?`,
 		qp.User, qp.Host, qp.Command, qp.Kappa)
-	if e != nil {
-		return result.Bytes(), e
+	if err != nil {
+		return []byte{}, err
 	}
 	defer rows.Close()
 
+	res := result.New("")
 	for rows.Next() {
 		var command string
 		var count int
 		rows.Scan(&command, &count)
-		result.WriteString(fmt.Sprintf("\n%d: %s", count, command))
+		res.AddCountRow(count, command)
 	}
-	return result.Bytes(), e
+	return res.Formatted(), err
 }
 
 // LastK returns the k most recent command lines in history
@@ -203,10 +203,10 @@ func (d Database) Demo(qp conf.QueryParams) (res []byte, e error) {
 
 	result.WriteString(fmt.Sprintf("There are %d command lines (%d unique) in your database from %d users across %d hosts.\n\n", numLines, numUniqueLines, numUsers, numHosts))
 
-	result.WriteString(fmt.Sprintf("Top-15 commands for user %s@%s:", qp.User, qp.Host))
+	result.WriteString(fmt.Sprintf("Top-15 commands for user %s@%s:\n", qp.User, qp.Host))
 	result.Write(restop)
 
-	result.WriteString(fmt.Sprintf("\n\nLast 10 commands user %s@%s ran:", qp.User, qp.Host))
+	result.WriteString(fmt.Sprintf("\n\nLast 10 commands user %s@%s ran:\n", qp.User, qp.Host))
 	result.Write(reslast)
 
 	return result.Bytes(), nil

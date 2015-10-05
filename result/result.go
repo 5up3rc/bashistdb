@@ -45,6 +45,7 @@ type Result struct {
 	out     *bytes.Buffer
 	written *bool // we use this to work around json not accepting a trailing comma
 	format  string
+	digits  *int // we use this to set the width of the count column to that of the first result (max)
 }
 
 // Golang's RFC3339 does not comply with all RFC3339 representations
@@ -57,7 +58,8 @@ func New(format string) *Result {
 		out.WriteString("[\n")
 	}
 	w := false
-	return &Result{&out, &w, format}
+	d := 0
+	return &Result{out: &out, written: &w, format: format, digits: &d}
 }
 
 // A rowJson is an internal struct to use with json.Marshal
@@ -111,4 +113,31 @@ func (r Result) Formatted() []byte {
 		r.out.WriteString("\n]")
 	}
 	return r.out.Bytes()
+}
+
+// AddCountRow adds a count query row to a Result struct. This function is not thread safe!
+// It is used by TopK database function.
+func (r Result) AddCountRow(count int, command string) {
+	var f string
+
+	switch *r.written {
+	case true:
+		_, _ = r.out.WriteString("\n")
+	default:
+		*r.written = true
+		*r.digits = digits(count)
+	}
+
+	f = fmt.Sprintf("%[2]*.[1]d | %[3]s", count, *r.digits, command)
+
+	r.out.WriteString(f)
+}
+
+func digits(n int) int {
+
+	if n < 10 {
+		return 1
+	} else {
+		return digits(n/10) + 1
+	}
 }
