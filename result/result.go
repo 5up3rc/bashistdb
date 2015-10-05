@@ -67,7 +67,7 @@ type rowJson struct {
 }
 
 // AddRow adds a query row to a Result struct. This function is not thread safe!
-func (r Result) AddRow(row int, datetime time.Time, user, host string, command string) {
+func (r Result) AddRow(row int, user, host string, command string, datetime time.Time) {
 	var f string
 
 	switch *r.written {

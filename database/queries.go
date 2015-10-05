@@ -54,38 +54,40 @@ func (d Database) TopK(qp conf.QueryParams) (res []byte, e error) {
 }
 
 // LastK returns the k most recent command lines in history
-func (d Database) LastK(qp conf.QueryParams) (res []byte, e error) {
-	var result bytes.Buffer
+func (d Database) LastK(qp conf.QueryParams) ([]byte, error) {
 	var rows *sql.Rows
+	var err error
 	switch qp.Unique {
 	case true:
-		rows, e = d.Query(`SELECT * FROM
-                                      (SELECT datetime, command FROM history
+		rows, err = d.Query(`SELECT * FROM
+                                      (SELECT rowid, * FROM history
                                          WHERE user LIKE ? AND host LIKE ? AND command LIKE ? ESCAPE '\'
                                          GROUP BY command
                                          ORDER BY datetime DESC LIMIT ?)
                                       ORDER BY datetime ASC`,
 			qp.User, qp.Host, qp.Command, qp.Kappa)
 	default:
-		rows, e = d.Query(`SELECT * FROM
-                                      (SELECT datetime, command FROM history
+		rows, err = d.Query(`SELECT * FROM
+                                      (SELECT rowid, * FROM history
                                          WHERE user LIKE ? AND host LIKE ? AND command LIKE ? ESCAPE '\'
                                          ORDER BY datetime DESC LIMIT ?)
                                    ORDER BY datetime ASC`,
 			qp.User, qp.Host, qp.Command, qp.Kappa)
 	}
-	if e != nil {
-		return result.Bytes(), e
+	if err != nil {
+		return []byte{}, err
 	}
 	defer rows.Close()
 
+	res := result.New(qp.Format)
 	for rows.Next() {
-		var command string
-		var time time.Time
-		rows.Scan(&time, &command)
-		result.WriteString(fmt.Sprintf("\n%s %s", time.Format(RFC3339alt), command))
+		var user, host, command string
+		var t time.Time
+		var row int
+		rows.Scan(&row, &user, &host, &command, &t)
+		res.AddRow(row, user, host, command, t)
 	}
-	return result.Bytes(), e
+	return res.Formatted(), nil
 }
 
 // DefaultQuery returns history within the search criteria in the format requested
@@ -99,7 +101,7 @@ func (d Database) DefaultQuery(qp conf.QueryParams) ([]byte, error) {
                                         GROUP BY command ORDER BY DATETIME ASC`,
 			qp.User, qp.Host, qp.Command)
 	default:
-		rows, err = d.Query(`SELECT rowid, datetime, user, host, command FROM history
+		rows, err = d.Query(`SELECT rowid, * FROM history
                                          WHERE user LIKE ? AND host LIKE ? AND command LIKE ? ESCAPE '\'`,
 			qp.User, qp.Host, qp.Command)
 	}
@@ -113,8 +115,8 @@ func (d Database) DefaultQuery(qp conf.QueryParams) ([]byte, error) {
 		var user, host, command string
 		var t time.Time
 		var row int
-		rows.Scan(&row, &t, &user, &host, &command)
-		res.AddRow(row, t, user, host, command)
+		rows.Scan(&row, &user, &host, &command, &t)
+		res.AddRow(row, user, host, command, t)
 	}
 	// Return the result without the newline at the end.
 	return res.Formatted(), nil
