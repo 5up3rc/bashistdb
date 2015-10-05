@@ -257,9 +257,11 @@ func init() {
 	flag.BoolVar(&globalSet, "g", false, "global: '-user % -host %'")
 	flag.BoolVar(&writeconfSet, "save", false, "write ~/.bashistdb.conf")
 	flag.BoolVar(&setupSet, "init", false, "set-up system to use bashistdb")
+	flag.BoolVar(&uniqueSet, "U", false, "show unique (distinct) command lines")
 	flag.BoolVar(&uniqueSet, "unique", false, "show unique (distinct) command lines")
 	flag.IntVar(&topk, "topk", 20, "return K most used command lines")
 	flag.IntVar(&lastk, "lastk", 20, "return K most recent command lines")
+	flag.IntVar(&lastk, "tail", 20, "return K most recent command lines")
 	flag.BoolVar(&usersSet, "users", false, "show users in database")
 	flag.BoolVar(&localSet, "local", false, "force local mode")
 
@@ -490,9 +492,9 @@ Available options:
        operators (%, _) work but unlike query we search for the exact term.
        Current: ` + hostEnv + `
     -g     Sets user and host to % for query operation. (equiv: -user % -host %)
-    -unique    If the query type permits, return unique results for the command
-       line field (returns the most recent execution of each command).
-    -lastk K
+    -U, -unique    If the query type permits, return unique results for the
+       command line field (returns the most recent execution of each command).
+    -lastk, -tail K
        Return the K most recent commands for the set user and host. If you add
        a query term it will return the K most recent commands that include it.
     -topk K
