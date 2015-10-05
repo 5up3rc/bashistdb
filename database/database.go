@@ -261,7 +261,6 @@ func (d Database) AddFromBuffer(r *bufio.Reader, user, host string) (stats strin
 // TopK returns the k most frequent command lines in history
 func (d Database) TopK(qp conf.QueryParams) (res []byte, e error) {
 	var result bytes.Buffer
-	result.WriteString(fmt.Sprintf("Top-%d commands:", qp.Kappa))
 	rows, e := d.Query(`SELECT command, count(*) as count FROM history
                                WHERE user LIKE ? AND host LIKE ? AND command LIKE ? ESCAPE '\'
                                GROUP BY command ORDER BY count DESC LIMIT ?`,
@@ -283,7 +282,6 @@ func (d Database) TopK(qp conf.QueryParams) (res []byte, e error) {
 // LastK returns the k most recent command lines in history
 func (d Database) LastK(qp conf.QueryParams) (res []byte, e error) {
 	var result bytes.Buffer
-	result.WriteString(fmt.Sprintf("%d most recent commands:", qp.Kappa))
 	var rows *sql.Rows
 	switch qp.Unique {
 	case true:
@@ -442,11 +440,14 @@ func (d Database) RunQuery(p conf.QueryParams) ([]byte, error) {
 		return d.TopK(p)
 	case conf.QUERY_USERS:
 		return d.Users(p)
+	case conf.QUERY_DEMO:
+		return d.Demo(p)
 	}
 
 	return []byte{}, errors.New("Unknown query type.")
 }
 
+// Users returns unique user@host pairs from the database.
 func (d Database) Users(qp conf.QueryParams) (res []byte, e error) {
 	var result bytes.Buffer
 	result.WriteString(fmt.Sprintf("Unique user-hosts pairs:"))
@@ -465,4 +466,55 @@ func (d Database) Users(qp conf.QueryParams) (res []byte, e error) {
 		result.WriteString(fmt.Sprintf("\n%s@%s", user, host))
 	}
 	return result.Bytes(), e
+}
+
+//
+func (d Database) Demo(qp conf.QueryParams) (res []byte, e error) {
+	var result bytes.Buffer
+
+	var numUsers int
+	err := d.QueryRow("SELECT count(*) FROM (SELECT distinct(user), host FROM history)").Scan(&numUsers)
+	if err != nil {
+		return result.Bytes(), err
+	}
+
+	var numHosts int
+	err = d.QueryRow("SELECT count(distinct(host)) FROM history").Scan(&numHosts)
+	if err != nil {
+		return result.Bytes(), err
+	}
+
+	var numLines int
+	err = d.QueryRow("SELECT count(command) FROM history").Scan(&numLines)
+	if err != nil {
+		return result.Bytes(), err
+	}
+
+	var numUniqueLines int
+	err = d.QueryRow("SELECT count(distinct(command)) FROM history").Scan(&numUniqueLines)
+	if err != nil {
+		return result.Bytes(), err
+	}
+
+	qp.Kappa = 15
+	restop, err := d.TopK(qp)
+	if err != nil {
+		return result.Bytes(), err
+	}
+
+	qp.Kappa = 10
+	reslast, err := d.LastK(qp)
+	if err != nil {
+		return result.Bytes(), err
+	}
+
+	result.WriteString(fmt.Sprintf("There are %d command lines (%d unique) in your database from %d users across %d hosts.\n\n", numLines, numUniqueLines, numUsers, numHosts))
+
+	result.WriteString(fmt.Sprintf("Top-15 commands for user %s@%s:", qp.User, qp.Host))
+	result.Write(restop)
+
+	result.WriteString(fmt.Sprintf("\n\nLast 10 commands user %s@%s ran:", qp.User, qp.Host))
+	result.Write(reslast)
+
+	return result.Bytes(), nil
 }

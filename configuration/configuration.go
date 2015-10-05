@@ -105,6 +105,7 @@ const (
 	QUERY_TOPK    = "topk"    // K most used commands
 	QUERY_USERS   = "users"   // users@host in database
 	QUERY_CLIENTS = "clients" // unique clients connected
+	QUERY_DEMO    = "demo"    // Run some demo queries
 )
 
 const (
@@ -325,8 +326,9 @@ func init() {
 		Operation = OP_QUERY
 	case stdinSet:
 		Operation = OP_IMPORT
-	default: // Try to read from stdin or print some stats if you can't
-		Operation = OP_STATS
+	default: // Demo mode
+		Operation = OP_QUERY
+		QParams.Type = QUERY_DEMO
 	}
 
 	if Operation == OP_QUERY {
@@ -345,7 +347,7 @@ func init() {
 	}
 
 	// Check mode-operation incompatibility
-	if Mode == MODE_SERVER && Operation != OP_STATS {
+	if Mode == MODE_SERVER && QParams.Type != QUERY_DEMO {
 		fmt.Printf("Incompatible options: asked for server mode and other functions.\n\n")
 		printHelp()
 		os.Exit(1)

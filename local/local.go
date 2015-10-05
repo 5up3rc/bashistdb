@@ -51,17 +51,6 @@ func Run() error {
 		// We print to log because we usually want this to be quiet
 		// as we may run it every time we hit ENTER in a bash prompt.
 		log.Info.Println(stats)
-	case conf.OP_STATS:
-		res, err := db.TopK(conf.QueryParams{User: "%", Host: "%", Command: "%", Kappa: 20})
-		if err != nil {
-			return err
-		}
-		fmt.Println(string(res))
-		res, err = db.LastK(conf.QueryParams{User: "%", Host: "%", Command: "%", Kappa: 10})
-		if err != nil {
-			return err
-		}
-		fmt.Println(string(res))
 	case conf.OP_QUERY:
 		res, err := db.RunQuery(conf.QParams)
 		if err != nil {
@@ -71,16 +60,3 @@ func Run() error {
 	}
 	return nil
 }
-
-// DEPRECATED
-// GetStdin checks if stdin is a unix character device,
-// that is if data is piped in to us. If yes it returns
-// a reader for stdin, else it returns an error.
-// func GetStdin() (r *bufio.Reader, e error) {
-// 	r = bufio.NewReader(os.Stdin)
-// 	stats, _ := os.Stdin.Stat()
-// 	if (stats.Mode() & os.ModeCharDevice) != os.ModeCharDevice {
-// 		return r, nil
-// 	}
-// 	return r, errors.New("Stdin is not character device.")
-// }

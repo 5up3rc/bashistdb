@@ -124,6 +124,19 @@ Run `bashistdb -h` to get a glimpse of available options. They are easy to under
 Currently the most useful command not covered until here is `-g`. G stands for global
 and makes your query to search for commands from all users at any host.
 
+An important knob is the `lowmem` build tag. Bashistdb uses scrypt to generate a new
+key for each new network message. Whilst secure, it can make bashistdb in server mode
+to use too much RAM and thus lead to a DoS attack. Scrypt's protection model is to use
+much RAM and CPU so that an attacker won't be able to bruteforce your password. A light
+use bashistdb thus will use about 80MiB of RAM. If some network messages overlap though,
+it may use a few hunderd MiBs.
+
+You can use the lowmem build tag (`go get -tags lowmem github.com/andmarios/bashistdb`)
+to get a version of bashistdb that tries to free memory agressively, thus usually staying
+below 20MiB of RAM and occasionally rising shortly to 44 or more, depending on simultaneous
+network connections. Performance wise this is sub-optimal but if you are on a low-end
+server it is necessary.
+
 License
 -------
 

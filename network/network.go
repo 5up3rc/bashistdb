@@ -74,12 +74,12 @@ func ServerMode() error {
 	for {
 		conn, err := s.Accept()
 		if err != nil {
-			log.Fatalln(err)
+			log.Info.Println("ERROR:", err.Error())
 		}
 		log.Info.Printf("Connection from %s.\n", conn.RemoteAddr())
 		err = db.LogConn(conn.RemoteAddr())
 		if err != nil {
-			log.Fatalln(err)
+			log.Info.Println("ERROR:", err.Error())
 		}
 		go handleConn(conn)
 	}
@@ -108,8 +108,6 @@ func ClientMode() error {
 			Hostname: conf.Hostname}
 
 		log.Info.Println("Sent history.")
-	case conf.OP_STATS:
-		msg = Message{Type: STATS, User: conf.User, Hostname: conf.Hostname}
 	case conf.OP_QUERY:
 		msg = Message{Type: QUERY, User: conf.User, Hostname: conf.Hostname, QParams: conf.QParams}
 	default:
@@ -165,26 +163,14 @@ func handleConn(conn net.Conn) {
 			result = []byte(res)
 		}
 		log.Info.Println("Client sent history: ", res)
-	case STATS:
-		res1, err := db.TopK(conf.QueryParams{User: "%", Host: "%", Command: "%", Kappa: 20})
-		if err != nil {
-			log.Fatalln(err)
-		}
-		res2, err := db.LastK(conf.QueryParams{User: "%", Host: "%", Command: "%", Kappa: 10})
-		if err != nil {
-			log.Fatalln(err)
-		}
-		result = res1
-		result = append(result, []byte("\n\n")...)
-		result = append(result, res2...)
-		log.Info.Println("Client asked for some stats.")
 	case QUERY:
 		result, err = db.RunQuery(msg.QParams)
 		if err != nil {
-			log.Fatalln(err)
+			log.Info.Println("ERROR:", err.Error())
+			result = []byte(err.Error())
 		}
-		log.Info.Printf("Client sent query for '%s' as '%s'@'%s', '%s' format.\n",
-			msg.QParams.User, msg.QParams.Host, msg.QParams.Command, msg.QParams.Format)
+		log.Info.Printf("Client sent %s query for '%s' as '%s'@'%s', '%s' format.\n",
+			msg.Type, msg.QParams.User, msg.QParams.Host, msg.QParams.Command, msg.QParams.Format)
 	}
 
 	reply := Message{Type: RESULT, Payload: result, Version: version.Version}
