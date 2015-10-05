@@ -106,6 +106,7 @@ const (
 	QUERY_USERS   = "users"   // users@host in database
 	QUERY_CLIENTS = "clients" // unique clients connected
 	QUERY_DEMO    = "demo"    // Run some demo queries
+	QUERY_ROW     = "row"     // Return a plain single row given its rowid
 )
 
 const (
@@ -160,6 +161,7 @@ var (
 	localSet     bool
 	uniqueSet    bool
 	usersSet     bool
+	row          int
 	// Here we will store the non flag arguments
 	query string
 	// These are not parsed from flags but we set them with flag.Visit
@@ -171,6 +173,7 @@ var (
 	formatSet     = false
 	topkSet       = false
 	lastkSet      = false
+	rowSet        = false
 	// These are set with manual searches
 	querySet = false
 	stdinSet = false
@@ -195,6 +198,8 @@ func setVisitedFlags(f *flag.Flag) {
 		topkSet = true
 	case "lastk", "tail":
 		lastkSet = true
+	case "row":
+		rowSet = true
 	}
 }
 
@@ -264,6 +269,7 @@ func init() {
 	flag.IntVar(&lastk, "tail", 20, "return K most recent command lines")
 	flag.BoolVar(&usersSet, "users", false, "show users in database")
 	flag.BoolVar(&localSet, "local", false, "force local mode")
+	flag.IntVar(&row, "row", 0, "return this row")
 
 	flag.Parse()
 
@@ -324,8 +330,10 @@ func init() {
 	case querySet: // We have non-flag arguments -> it is a query
 		Operation = OP_QUERY
 		QParams.Type = QUERY
-	case topkSet, lastkSet:
+	case rowSet:
 		Operation = OP_QUERY
+		QParams.Type = QUERY_ROW
+		QParams.Kappa = row
 	case stdinSet:
 		Operation = OP_IMPORT
 	default: // Demo mode
@@ -500,6 +508,7 @@ Available options:
     -topk K
        Return the K most frequent commands for the set user and host. If you add
        a query term it will return the K most frequent commands that include it.
+    -row K    Return the K row from the database. You can pipe it to bash.
     -users    Return the users in the database. You may use search criteria, eg
       to find users who run a certain commands. By default this option searches
       across all users and host unless you explicitly set them via flags.

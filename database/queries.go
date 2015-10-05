@@ -135,6 +135,8 @@ func (d Database) RunQuery(p conf.QueryParams) ([]byte, error) {
 		return d.Users(p)
 	case conf.QUERY_DEMO:
 		return d.Demo(p)
+	case conf.QUERY_ROW:
+		return d.ReturnRow(p)
 	}
 
 	return []byte{}, errors.New("Unknown query type.")
@@ -161,7 +163,7 @@ func (d Database) Users(qp conf.QueryParams) (res []byte, e error) {
 	return result.Bytes(), e
 }
 
-//
+// Demo returns some stats from the database to showcase bashistdb.
 func (d Database) Demo(qp conf.QueryParams) (res []byte, e error) {
 	var result bytes.Buffer
 
@@ -210,4 +212,15 @@ func (d Database) Demo(qp conf.QueryParams) (res []byte, e error) {
 	result.Write(reslast)
 
 	return result.Bytes(), nil
+}
+
+// Return row returns a single row with no other data.
+// It is useful to pipe to bash.
+func (d Database) ReturnRow(qp conf.QueryParams) ([]byte, error) {
+	var command string
+	err := d.QueryRow("SELECT command FROM history WHERE rowid = ?", qp.Kappa).Scan(&command)
+	if err != nil {
+		return []byte{}, err
+	}
+	return []byte(command), nil
 }
