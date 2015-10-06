@@ -96,7 +96,7 @@ func (d Database) DefaultQuery(qp conf.QueryParams) ([]byte, error) {
 	var err error
 	switch qp.Unique {
 	case true:
-		rows, err = d.Query(`SELECT rowid, datetime, user, host, command FROM history
+		rows, err = d.Query(`SELECT rowid, * FROM history
                                         WHERE user LIKE ? AND host LIKE ? AND command LIKE ? ESCAPE '\'
                                         GROUP BY command ORDER BY DATETIME ASC`,
 			qp.User, qp.Host, qp.Command)
