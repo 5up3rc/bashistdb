@@ -20,6 +20,7 @@ package configuration
 
 import (
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -203,6 +204,127 @@ func setVisitedFlags(f *flag.Flag) {
 	}
 }
 
+// Set all boolean flags. Besides flag vars, this is also for stdin
+// detection and query detection (non-flag argument).
+func setBooleanFlags() {
+	// Set boolean counterparts for non-boolean flag vars.
+	flag.Visit(setVisitedFlags)
+
+	// Detect if there is a QUERY in the command line (that is non-flag arguments)
+	if len(flag.Args()) > 0 {
+		querySet = true
+	}
+
+	// Detect if there are data coming from stdin:
+	stats, _ := os.Stdin.Stat()
+	if (stats.Mode() & os.ModeCharDevice) != os.ModeCharDevice {
+		stdinSet = true
+	}
+}
+
+// checkFlagCombination checks if non-compatible flags were used
+// This may not be exhaustive. There won't be real errors if we don't
+// detect incompatible arguments, just that the user will see only
+// one of the arguments executed. This function serves more as a help
+// mode.
+func checkFlagCombination() error {
+	// Do not mix server, client and local modes:
+	// Server mode incompatible with client mode.
+	if Mode == MODE_SERVER && remoteSet { // User may just set his BASHISTDB_REMOTE env var
+		return errors.New("Incompatible options: server and client.")
+	}
+
+	if lastkSet && topkSet {
+		return errors.New("Incompatible options: -lastk and -topk.")
+	}
+
+	if topkSet && uniqueSet {
+		return errors.New("Incompatible options: -topk and -unique.")
+	}
+
+	if rowSet && (lastkSet || topkSet) {
+		return errors.New("Incompatible options: -rows and one of -lastk, -topk")
+	}
+
+	if usersSet && (lastkSet || topkSet || querySet || rowSet) {
+		return errors.New("Incompatible options: -users with other type of query")
+	}
+
+	if rowSet && querySet {
+		return errors.New("Incompatible options: -row combined with query")
+	}
+
+	// Check mode-operation incompatibility
+	if Mode == MODE_SERVER && QParams.Type != QUERY_DEMO {
+		return errors.New("Incompatible options: asked for server mode and other functions.\n\n")
+	}
+	return nil
+}
+
+// Sets Operation Query Parameters
+func setOpAndQParams() {
+	// Determine operation (used in local and client mode)
+	switch {
+	case topkSet:
+		Operation = OP_QUERY
+		QParams.Type = QUERY_TOPK
+		QParams.Kappa = topk
+	case lastkSet:
+		Operation = OP_QUERY
+		QParams.Type = QUERY_LASTK
+		QParams.Kappa = lastk
+	case usersSet:
+		Operation = OP_QUERY
+		QParams.Type = QUERY_USERS
+	case querySet: // We have non-flag arguments -> it is a query
+		Operation = OP_QUERY
+		QParams.Type = QUERY
+	case rowSet:
+		Operation = OP_QUERY
+		QParams.Type = QUERY_ROW
+		QParams.Kappa = row
+	case stdinSet:
+		Operation = OP_IMPORT
+	default: // Demo mode
+		Operation = OP_QUERY
+		QParams.Type = QUERY_DEMO
+	}
+
+	if availableFormats[format] { // Query uses output format
+		QParams.Format = format
+	} else {
+		Log.Info.Println("The specified format doesn't exist. Reverting to default:", FORMAT_DEFAULT)
+		QParams.Format = FORMAT_DEFAULT
+	}
+
+	switch uniqueSet {
+	case true:
+		QParams.Unique = true
+	default:
+		QParams.Unique = false
+	}
+
+	QParams.User = user
+	if usersSet && !userSet { // simple users query should be global
+		QParams.User = "%"
+	}
+
+	QParams.Host = host
+	if usersSet && !hostSet { // simple users query should be global
+		QParams.Host = "%"
+	}
+
+	// Check for global (search) flag
+	if Operation == OP_QUERY && globalSet {
+		// User, Hostname = "%", "%" // TODO: remove
+		QParams.User, QParams.Host = "%", "%"
+	}
+
+	// Prepare query term. Join non-flag args and prefix-suffix with wildcard
+	QParams.Command = "%" + strings.Join(flag.Args(), " ") + "%" // Grep like behaviour
+
+}
+
 // Read configuration file, overrides environment variables.
 func readConfFile() {
 	// Try to load settings from configuration file (if exists)
@@ -273,7 +395,7 @@ func init() {
 
 	flag.Parse()
 
-	flag.Visit(setVisitedFlags)
+	setBooleanFlags()
 
 	if helpSet {
 		printHelp()
@@ -289,6 +411,9 @@ func init() {
 	case serverSet:
 		Mode = MODE_SERVER
 		Address = ":" + port
+		if verbosity < 1 { // Server mode sets min verbosity of 1 (INFO)
+			verbosity = 1
+		}
 	case remote != "" && !localSet:
 		Mode = MODE_CLIENT
 		Address = remote + ":" + port
@@ -296,81 +421,19 @@ func init() {
 		Mode = MODE_LOCAL
 	}
 
-	// Server mode incompatible with client mode.
-	if Mode == MODE_SERVER && remoteSet { // User may just set his BASHISTDB_REMOTE env var
-		fmt.Printf("Incompatible options: server and client.\n\n")
+	setOpAndQParams()
+
+	if err := checkFlagCombination(); err != nil {
+		fmt.Println(err)
 		printHelp()
 		os.Exit(1)
 	}
 
-	// Detect if there is a QUERY in the command line (that is non-flag arguments)
-	if len(flag.Args()) > 0 {
-		querySet = true
-	}
-
-	// Detect if there are data coming from stdin:
-	stats, _ := os.Stdin.Stat()
-	if (stats.Mode() & os.ModeCharDevice) != os.ModeCharDevice {
-		stdinSet = true
-	}
-
-	// Determine operation (used in local and client mode)
-	switch {
-	case topkSet:
-		Operation = OP_QUERY
-		QParams.Type = QUERY_TOPK
-		QParams.Kappa = topk
-	case lastkSet:
-		Operation = OP_QUERY
-		QParams.Type = QUERY_LASTK
-		QParams.Kappa = lastk
-	case usersSet:
-		Operation = OP_QUERY
-		QParams.Type = QUERY_USERS
-	case querySet: // We have non-flag arguments -> it is a query
-		Operation = OP_QUERY
-		QParams.Type = QUERY
-	case rowSet:
-		Operation = OP_QUERY
-		QParams.Type = QUERY_ROW
-		QParams.Kappa = row
-	case stdinSet:
-		Operation = OP_IMPORT
-	default: // Demo mode
-		Operation = OP_QUERY
-		QParams.Type = QUERY_DEMO
-	}
-
-	if Operation == OP_QUERY {
-		if availableFormats[format] { // Query uses output format
-			QParams.Format = format
-		} else {
-			Log.Info.Println("The specified format doesn't exist. Reverting to default:", FORMAT_DEFAULT)
-			QParams.Format = FORMAT_DEFAULT
-		}
-		switch uniqueSet {
-		case true:
-			QParams.Unique = true
-		default:
-			QParams.Unique = false
-		}
-	}
-
-	// Check mode-operation incompatibility
-	if Mode == MODE_SERVER && QParams.Type != QUERY_DEMO {
-		fmt.Printf("Incompatible options: asked for server mode and other functions.\n\n")
-		printHelp()
-		os.Exit(1)
-	}
-
-	// Server mode sets minimum verbosity of 1 (INFO)
-	if Mode == MODE_SERVER && verbosity == 0 {
-		verbosity = 1
-	}
 	// Verbosity reaches up to 2 (DEBUG)
 	if verbosity > 2 {
 		verbosity = 2
 	}
+
 	// Create global logger
 	Log = llog.New(verbosity)
 
@@ -381,10 +444,6 @@ func init() {
 		os.Exit(1)
 	}
 	User = user // TODO: remove
-	QParams.User = user
-	if usersSet && !userSet { // simple users query should be global
-		QParams.User = "%"
-	}
 
 	// Protest about hostname issues.
 	if host == "" {
@@ -393,16 +452,6 @@ func init() {
 		os.Exit(1)
 	}
 	Hostname = host // TODO: remove
-	QParams.Host = host
-
-	// Check for global (search) flag
-	if Operation == OP_QUERY && globalSet {
-		// User, Hostname = "%", "%" // TODO: remove
-		QParams.User, QParams.Host = "%", "%"
-	}
-	if usersSet && !hostSet { // simple users query should be global
-		QParams.Host = "%"
-	}
 
 	// Welcome message
 	m := ""
@@ -414,14 +463,12 @@ func init() {
 	case MODE_LOCAL:
 		m = "local"
 	}
+
 	Log.Info.Println("Welcome " + User + "@" + Hostname + ". Bashistdb is in " + m + " mode.")
 	Log.Debug.Println("Loaded some settings from environment. Configuration file and flags can override them.")
 	if foundConfFile {
 		Log.Info.Println("Loaded some settings from ~/.bashistdbconf. Command line flags can override them.")
 	}
-
-	// Prepare query term. Join non-flag args and prefix-suffix with wildcard
-	QParams.Command = "%" + strings.Join(flag.Args(), " ") + "%" // Grep like behaviour
 
 	if Operation == OP_QUERY {
 		Log.Info.Printf("Your query parameters are user: %s, host: %s, command line: %s.\n", QParams.User, QParams.Host, QParams.Command)
