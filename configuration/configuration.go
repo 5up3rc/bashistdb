@@ -19,11 +19,9 @@
 package configuration
 
 import (
-	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 	"strings"
@@ -78,6 +76,38 @@ const (
 	MODE_INIT
 )
 
+// SERVER CLIENT LOCAL INIT SAVE
+// QUERYSTRING TOPK LASTK USERS ROW UNIQUE
+
+// SERVER
+// CLIENT ^ LOCAL > QUERYSTRING || QS && UNIQUE
+// ------//------ > TOPK || TOPK && QS
+// ------//------ > LASTK || LASTK && QS || LASTK && UNIQUE || LASTK && QS && UNIQUE
+// ------//------ > ROW
+// ------//------
+// const (
+// 	mserver = 1 << iota
+// 	mclient
+// 	mlocal
+// 	minit
+// 	msave
+// 	mqs
+// 	mtopk
+// 	mlastk
+// 	musers
+// 	mrow
+// 	munique
+// )
+
+// func tryme() {
+// 	f := mserver & mclient
+
+// 	switch f {
+// 	case mserver:
+// 	case mclient & mqs,  mlocal & mqs, mclient & mqs & munique, mlocal & mqs & munique:
+// 	}
+// }
+
 // Operations, you may only add entries at the end.
 const (
 	_         = iota
@@ -113,16 +143,6 @@ const (
 const (
 	bashistPort = "25625"
 )
-
-// exportFields is a struct used to export some
-// configuration variables to JSON and then to a
-// file
-type exportFields struct {
-	Database string
-	Remote   string
-	Port     string
-	Key      string
-}
 
 // Load some defaults from environment and some basic settings
 var (
@@ -325,35 +345,11 @@ func setOpAndQParams() {
 
 }
 
-// Read configuration file, overrides environment variables.
-func readConfFile() {
-	// Try to load settings from configuration file (if exists)
-	if c, err := ioutil.ReadFile(confFile); err == nil {
-		e := &exportFields{}
-		if err = json.Unmarshal(c, e); err == nil {
-			if e.Database != "" {
-				databaseEnv = e.Database
-			}
-			if e.Remote != "" {
-				remoteEnv = e.Remote
-			}
-			if e.Port != "" {
-				portEnv = e.Port
-			}
-			if e.Key != "" {
-				passphraseEnv = e.Key
-			}
-			foundConfFile = true
-		} else {
-			log.Fatalln("Could not parse configuration file:",
-				err.Error())
-		}
-	}
-}
-
 // Configuration seems a bit messy but that's the way it is.
 func init() {
-	readConfFile()
+	if err := readConfFile(); err != nil {
+		log.Fatalln(err)
+	}
 
 	// If port isn't set yet, set default port.
 	if portEnv == "" {
@@ -494,20 +490,12 @@ func init() {
 	}
 
 	if writeconfSet {
-		// Pretty print JSON instead of just Marshal
-		conf := fmt.Sprintf(`{
-"database": %#v,
-"remote"  : %#v,
-"port"    : %#v,
-"key"     : %#v
-}
-`, Database, remote, port, string(Key))
-		err := ioutil.WriteFile(confFile, []byte(conf), 0600)
-		if err != nil {
+		if err := writeConfFile(); err != nil {
 			Log.Println(err)
 		} else {
 			Log.Info.Println("Wrote settings to ", confFile)
 		}
+
 	}
 
 	Log.Debug.Printf("Database: %s, mode: %d, operation: %d, address: %s\n", Database, Mode, Operation, Address)
