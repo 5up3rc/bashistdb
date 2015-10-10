@@ -21,7 +21,6 @@ package configuration
 import (
 	"errors"
 	"flag"
-	"fmt"
 	"log"
 	"os"
 	"strings"
@@ -29,175 +28,51 @@ import (
 	"github.com/andmarios/bashistdb/llog"
 )
 
-// Exported fields are global settings.
-var (
-	Mode      int          // Mode of operation (local, server, client, etc)
-	Operation int          // function (read, restore, et)
-	Log       *llog.Logger // Log is the mail logger to log to
-	Address   string       // Address is the remote server's address for client mode or server's address for server mode
-	Database  string       // Database is the filename of the sqlite database
-	Key       []byte       // Key it the user passphrase to generate keys for net comms
-	User      string       // User is the username detected or explicitly set
-	Hostname  string       // Hostname is the hostname detected or explicitly set
-	QParams   QueryParams  // Parameters to query
-)
-
-// Output Formats
-const (
-	FORMAT_BASH_HISTORY = "restore"
-	FORMAT_ALL          = "all"
-	FORMAT_COMMAND_LINE = "command_line"
-	FORMAT_TIMESTAMP    = "timestamp"
-	FORMAT_LOG          = "log"
-	FORMAT_JSON         = "json"
-	FORMAT_EXPORT       = "export"
-	FORMAT_DEFAULT      = FORMAT_COMMAND_LINE
-)
-
-var availableFormats = map[string]bool{
-	FORMAT_BASH_HISTORY: true,
-	FORMAT_ALL:          true,
-	FORMAT_COMMAND_LINE: true,
-	FORMAT_TIMESTAMP:    true,
-	FORMAT_LOG:          true,
-	FORMAT_JSON:         true,
-	FORMAT_EXPORT:       true,
-}
-
-// Run Modes, you may only add entries at the end.
-// If many are set, precedence should be PRINT_VERSION > INIT > SERVER > CLIENT > LOCAL
-// It is ok that we use ints because these are not communicated between client and server.
-const (
-	_ = iota
-	MODE_SERVER
-	MODE_CLIENT
-	MODE_LOCAL
-	MODE_PRINT_VERSION // version flag overrides anything else
-	MODE_INIT
-)
-
-// SERVER CLIENT LOCAL INIT SAVE
-// QUERYSTRING TOPK LASTK USERS ROW UNIQUE
-
-// SERVER
-// CLIENT ^ LOCAL > QUERYSTRING || QS && UNIQUE
-// ------//------ > TOPK || TOPK && QS
-// ------//------ > LASTK || LASTK && QS || LASTK && UNIQUE || LASTK && QS && UNIQUE
-// ------//------ > ROW
-// ------//------
-// const (
-// 	mserver = 1 << iota
-// 	mclient
-// 	mlocal
-// 	minit
-// 	msave
-// 	mqs
-// 	mtopk
-// 	mlastk
-// 	musers
-// 	mrow
-// 	munique
-// )
-
-// func tryme() {
-// 	f := mserver & mclient
-
-// 	switch f {
-// 	case mserver:
-// 	case mclient & mqs,  mlocal & mqs, mclient & mqs & munique, mlocal & mqs & munique:
-// 	}
-// }
-
-// Operations, you may only add entries at the end.
-const (
-	_         = iota
-	OP_IMPORT // Import history from stdin
-	OP_QUERY  // Run a query
-	OP_STATS  // Run some default stat queries (runs when no args are given)
-	OP_DELETE // Delete lines from history (to be implemented)
-)
-
-// A QueryParams contains parameters that are used to run a query.
-// Depending on query type, some fields may not be used.
-type QueryParams struct {
-	Type    string // Query type
-	Kappa   int    // If topk or lastk, we store k here
-	User    string // Search User
-	Host    string // Search Host
-	Format  string // Return format
-	Command string // Search Term for command line field
-	Unique  bool   // Return unique command lines
-}
-
-// Available query types
-const (
-	QUERY         = "query"   // A normal search (grep)
-	QUERY_LASTK   = "lastk"   // K most recent commands
-	QUERY_TOPK    = "topk"    // K most used commands
-	QUERY_USERS   = "users"   // users@host in database
-	QUERY_CLIENTS = "clients" // unique clients connected
-	QUERY_DEMO    = "demo"    // Run some demo queries
-	QUERY_ROW     = "row"     // Return a plain single row given its rowid
-)
-
 const (
 	bashistPort = "25625"
 )
 
-// Load some defaults from environment and some basic settings
-var (
-	databaseEnv   = os.Getenv("HOME") + "/.bashistdb.sqlite3"
-	userEnv       = os.Getenv("USER")
-	hostEnv, _    = os.Hostname()
-	remoteEnv     = os.Getenv("BASHISTDB_REMOTE")
-	portEnv       = os.Getenv("BASHISTDB_PORT")
-	passphraseEnv = os.Getenv("BASHISTDB_KEY")
-	// Vars below can not be overriden by user
-	confFile      = os.Getenv("HOME") + "/.bashistdb.conf"
-	foundConfFile = false
-)
-
 // flag variables
 // Vars ending in Set are bool
-// For non-bool vars we may create a bool counterpart
-// using flag.Visit
+// For non-bool vars we may create a bool counterpart using flag.Visit
+// We set them all here so we can copy this to test for resetting vars
 var (
 	// These are used as actual flagvars
-	database     string
-	versionSet   bool
-	verbosity    int
-	user         string
-	host         string
-	serverSet    bool
-	remote       string
-	port         string
-	passphrase   string
-	format       string
-	helpSet      bool
-	globalSet    bool
-	writeconfSet bool
-	setupSet     bool
-	topk         int
-	lastk        int
-	localSet     bool
-	uniqueSet    bool
-	usersSet     bool
-	row          int
+	database     = os.Getenv("HOME") + "/.bashistdb.sqlite3"
+	versionSet   = false
+	verbosity    = 0
+	user         = os.Getenv("USER")
+	host, _      = os.Hostname()
+	serverSet    = false
+	remote       = os.Getenv("BASHISTDB_REMOTE")
+	port         = os.Getenv("BASHISTDB_PORT")
+	passphrase   = os.Getenv("BASHISTDB_KEY")
+	format       = FORMAT_DEFAULT
+	helpSet      = false
+	globalSet    = false
+	writeconfSet = false
+	setupSet     = false
+	topk         = 20
+	lastk        = 20
+	localSet     = false
+	uniqueSet    = false
+	usersSet     = false
+	row          = 0
 	// Here we will store the non flag arguments
-	query string
+	query = ""
 	// These are not parsed from flags but we set them with flag.Visit
-	userSet       = false
-	hostSet       = false
-	remoteSet     = false
-	portSet       = false
-	passphraseSet = false
-	formatSet     = false
-	topkSet       = false
-	lastkSet      = false
-	rowSet        = false
+	userSet   = false
+	hostSet   = false
+	remoteSet = false
+	topkSet   = false
+	lastkSet  = false
+	rowSet    = false
 	// These are set with manual searches
 	querySet = false
 	stdinSet = false
+	// Vars below can not be overriden by user
+	confFile      = os.Getenv("HOME") + "/.bashistdb.conf"
+	foundConfFile = false
 )
 
 // Set visited flags so we may have boolean expression criteria
@@ -209,12 +84,6 @@ func setVisitedFlags(f *flag.Flag) {
 		hostSet = true
 	case "r", "remote":
 		remoteSet = true
-	case "p", "port":
-		portSet = true
-	case "k", "key":
-		passphraseSet = true
-	case "f", "format":
-		formatSet = true
 	case "topk":
 		topkSet = true
 	case "lastk", "tail":
@@ -345,57 +214,70 @@ func setOpAndQParams() {
 
 }
 
+// Sets and parses flags. Helps for testing to separate these.
+func setParseFlags() {
+	// flagVars, we keep actual documentation separated
+	flag.StringVar(&database, "db", database, "Database file")
+	flag.BoolVar(&versionSet, "V", versionSet, "Show version.")
+	flag.IntVar(&verbosity, "v", verbosity, "verbosity level")
+	flag.IntVar(&verbosity, "verbose", verbosity, "verbosity level")
+	flag.StringVar(&user, "U", user, "custom username")
+	flag.StringVar(&user, "user", user, "custom username")
+	flag.StringVar(&host, "H", host, "custom hostname")
+	flag.StringVar(&host, "host", host, " custom hostname")
+	flag.BoolVar(&serverSet, "s", serverSet, "run as server")
+	flag.BoolVar(&serverSet, "server", serverSet, "run as server")
+	flag.StringVar(&remote, "r", remote, "run as client, connect to SERVER")
+	flag.StringVar(&remote, "remote", remote, "run as client, connect to SERVER")
+	flag.StringVar(&port, "p", port, "port")
+	flag.StringVar(&port, "port", port, "port")
+	flag.StringVar(&passphrase, "k", passphrase, "passphrase")
+	flag.StringVar(&passphrase, "key", passphrase, "passphrase")
+	flag.StringVar(&format, "f", format, "query output format")
+	flag.StringVar(&format, "format", format, "query output format")
+	flag.BoolVar(&helpSet, "h", helpSet, "help")
+	flag.BoolVar(&helpSet, "help", helpSet, "help")
+	flag.BoolVar(&globalSet, "g", globalSet, "global: '-user % -host %'")
+	flag.BoolVar(&writeconfSet, "save", writeconfSet, "write ~/.bashistdb.conf")
+	flag.BoolVar(&setupSet, "init", setupSet, "set-up system to use bashistdb")
+	flag.BoolVar(&uniqueSet, "u", uniqueSet, "show unique (distinct) command lines")
+	flag.BoolVar(&uniqueSet, "unique", uniqueSet, "show unique (distinct) command lines")
+	flag.IntVar(&topk, "topk", topk, "return K most used command lines")
+	flag.IntVar(&lastk, "lastk", lastk, "return K most recent command lines")
+	flag.IntVar(&lastk, "tail", lastk, "return K most recent command lines")
+	flag.BoolVar(&usersSet, "users", usersSet, "show users in database")
+	flag.BoolVar(&localSet, "local", localSet, "force local mode")
+	flag.IntVar(&row, "row", row, "return this row")
+
+	flag.Parse()
+}
+
+// parse is the “main” of out configuration code.
 // Configuration seems a bit messy but that's the way it is.
-func init() {
-	if err := readConfFile(); err != nil {
-		log.Fatalln(err)
+func parse() error {
+	// If this is set, skip setting and parsing flags. We are testing
+	// and we don;t need readConfFile has already run.
+	if t := os.Getenv("BASHISTDB_TEST"); t == "" {
+		if err := readConfFile(); err != nil {
+			return err
+		}
 	}
 
 	// If port isn't set yet, set default port.
-	if portEnv == "" {
-		portEnv = bashistPort
+	if port == "" {
+		port = bashistPort
 	}
 
-	// flagVars, we keep actual documentation separated
-	flag.StringVar(&database, "db", databaseEnv, "Database file")
-	flag.BoolVar(&versionSet, "V", false, "Show version.")
-	flag.IntVar(&verbosity, "v", 0, "verbosity level")
-	flag.IntVar(&verbosity, "verbose", 0, "verbosity level")
-	flag.StringVar(&user, "u", userEnv, "custom username")
-	flag.StringVar(&user, "user", userEnv, "custom username")
-	flag.StringVar(&host, "H", hostEnv, "custom hostname")
-	flag.StringVar(&host, "host", hostEnv, " custom hostname")
-	flag.BoolVar(&serverSet, "s", false, "run as server")
-	flag.BoolVar(&serverSet, "server", false, "run as server")
-	flag.StringVar(&remote, "r", remoteEnv, "run as client, connect to SERVER")
-	flag.StringVar(&remote, "remote", remoteEnv, "run as client, connect to SERVER")
-	flag.StringVar(&port, "p", portEnv, "port")
-	flag.StringVar(&port, "port", portEnv, "port")
-	flag.StringVar(&passphrase, "k", "", "passphrase")
-	flag.StringVar(&passphrase, "key", "", "passphrase")
-	flag.StringVar(&format, "f", FORMAT_DEFAULT, "query output format")
-	flag.StringVar(&format, "format", FORMAT_DEFAULT, "query output format")
-	flag.BoolVar(&helpSet, "h", false, "help")
-	flag.BoolVar(&helpSet, "help", false, "help")
-	flag.BoolVar(&globalSet, "g", false, "global: '-user % -host %'")
-	flag.BoolVar(&writeconfSet, "save", false, "write ~/.bashistdb.conf")
-	flag.BoolVar(&setupSet, "init", false, "set-up system to use bashistdb")
-	flag.BoolVar(&uniqueSet, "U", false, "show unique (distinct) command lines")
-	flag.BoolVar(&uniqueSet, "unique", false, "show unique (distinct) command lines")
-	flag.IntVar(&topk, "topk", 20, "return K most used command lines")
-	flag.IntVar(&lastk, "lastk", 20, "return K most recent command lines")
-	flag.IntVar(&lastk, "tail", 20, "return K most recent command lines")
-	flag.BoolVar(&usersSet, "users", false, "show users in database")
-	flag.BoolVar(&localSet, "local", false, "force local mode")
-	flag.IntVar(&row, "row", 0, "return this row")
-
-	flag.Parse()
-
-	setBooleanFlags()
+	// If this is set, skip setting and parsing flags. We are testing
+	// and setParseFlags has already run.
+	if t := os.Getenv("BASHISTDB_TEST"); t == "" {
+		setParseFlags()
+		setBooleanFlags()
+	}
 
 	if helpSet {
-		printHelp()
-		os.Exit(0)
+		Mode = MODE_HELP
+		return nil
 	}
 
 	// Determine run mode. A run mode is expected to run and then bashistdb toexit.
@@ -420,9 +302,7 @@ func init() {
 	setOpAndQParams()
 
 	if err := checkFlagCombination(); err != nil {
-		fmt.Println(err)
-		printHelp()
-		os.Exit(1)
+		return err
 	}
 
 	// Verbosity reaches up to 2 (DEBUG)
@@ -435,17 +315,13 @@ func init() {
 
 	// Protest about username issues.
 	if user == "" {
-		Log.Info.Printf("Couldn't read username from $USER system variable and none was provided by -user flag.\n\n")
-		printHelp()
-		os.Exit(1)
+		return errors.New("Couldn't read username from $USER system variable and none was provided by -user flag.")
 	}
 	User = user // TODO: remove
 
 	// Protest about hostname issues.
 	if host == "" {
-		Log.Info.Printf("Couldn't get hostname from system and none was provided by -host flag.\n\n")
-		printHelp()
-		os.Exit(1)
+		return errors.New("Couldn't get hostname from system and none was provided by -host flag.")
 	}
 	Hostname = host // TODO: remove
 
@@ -481,17 +357,14 @@ func init() {
 	// Passphrase may come from environment or flag
 	if Mode == MODE_SERVER || Mode == MODE_CLIENT || writeconfSet {
 		if passphrase == "" {
-			passphrase = passphraseEnv
-			if passphrase == "" {
-				log.Println("Using empty passphrase.")
-			}
+			log.Println("Using empty passphrase.")
 		}
 		Key = []byte(passphrase)
 	}
 
 	if writeconfSet {
 		if err := writeConfFile(); err != nil {
-			Log.Println(err)
+			return err
 		} else {
 			Log.Info.Println("Wrote settings to ", confFile)
 		}
@@ -499,79 +372,6 @@ func init() {
 	}
 
 	Log.Debug.Printf("Database: %s, mode: %d, operation: %d, address: %s\n", Database, Mode, Operation, Address)
-}
 
-// printHelp prints custom help in order to be able to
-// document non-flag argument and keep output nice
-func printHelp() {
-	fmt.Println("" + `Usage of bashistdb.
-Query or run in server mode:
-  bashistdb [OPTIONS] [QUERY]
-Import history:
-  history | bashistdb [OPTIONS]
-
-The query is run against the command lines only. Special flags exist for user
-and hostname search. SQLite wildcard operators are percent (%) instead of
-asterisk (*) and undercore (_) instead of question mark (?). You may use
-backslash (\) to escape. The query term always run with both a wildcard prefix
-and suffix. Think of it as grep.
-
-Available options:
-    -db FILE
-       Path to database file. It will be created if it doesn't exist.
-       Current: ` + databaseEnv + `
-    -V     Print version info and exit.
-    -v , -verbose LEVEL
-       Verbosity level: 0 for silent, 1 for info, 2 for debug.
-       In server mode it is set to 1 if left 0.
-    -u, -user USER
-       Optional user name to use instead of reading $USER variable. In query
-       operations it doubles as search term for the username. Wildcard
-       operators (%, _) work but unlike query we search for the exact term.
-       Current: ` + userEnv + `
-    -H, -host HOST
-       Optional hostname to use instead of reading it from the system. In query
-       operations, it doubles as search term for the hostname. Wildcard
-       operators (%, _) work but unlike query we search for the exact term.
-       Current: ` + hostEnv + `
-    -g     Sets user and host to % for query operation. (equiv: -user % -host %)
-    -U, -unique    If the query type permits, return unique results for the
-       command line field (returns the most recent execution of each command).
-    -lastk, -tail K
-       Return the K most recent commands for the set user and host. If you add
-       a query term it will return the K most recent commands that include it.
-    -topk K
-       Return the K most frequent commands for the set user and host. If you add
-       a query term it will return the K most frequent commands that include it.
-    -row K    Return the K row from the database. You can pipe it to bash.
-    -users    Return the users in the database. You may use search criteria, eg
-      to find users who run a certain commands. By default this option searches
-      across all users and host unless you explicitly set them via flags.
-    -s, -server    Run in server mode. Bashistdb currently binds to 0.0.0.0.
-    -r, -remote SERVER_ADDRESS
-       Run in network client mode, connect to server address. You may also set
-       this with the BASHISTDB_REMOTE env variable. Current: ` + remoteEnv + `
-    -p, -port PORT
-       Server port to listen on/connect to. You may also set this with the
-       BASHISTDB_PORT env variable. Current: ` + portEnv + `
-    -k, -key PASSPHRASE
-       Passphrase to use for creating keys to encrypt network communications.
-       You may also set it via the BASHISTDB_KEY env variable.
-    -f, --format FORMAT
-       How to format query output. Available types are:
-      ` + FORMAT_ALL + ", " + FORMAT_BASH_HISTORY + ", " +
-		FORMAT_COMMAND_LINE + ", " + FORMAT_JSON + ", " +
-		FORMAT_LOG + ", " + FORMAT_TIMESTAMP + ", " + FORMAT_EXPORT + `
-       Format '` + FORMAT_BASH_HISTORY + `' can be used to restore your history file.
-       Format '` + FORMAT_EXPORT + `' can be used to pipe your history to another
-       instance of bashistdb, while retaining user and host of each command.
-       Default: ` + FORMAT_DEFAULT + `
-    -save    Write some settings (database, remote, port, key) to configuration
-       file: ` + confFile + `. These settings override environment variables.
-    -h, --help    This text.
-    -init    Setup system for bashistdb: (1) Save settings to file. (2) Add to
-       bashrc functions to timestamp history and sent each command to bashistdb
-       (remote or local, taken from settings), (3) add a unique serial timestamp
-       to any untimestamped line in your bash_history.
-    -local   Force local [db] mode, despite remote mode being set by env or conf.`)
+	return nil
 }

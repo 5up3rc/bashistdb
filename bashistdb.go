@@ -19,6 +19,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 
 	conf "github.com/andmarios/bashistdb/configuration"
 	"github.com/andmarios/bashistdb/llog"
@@ -54,5 +55,11 @@ func main() {
 		if err := setup.Apply(true); err != nil {
 			log.Fatalln(err)
 		}
+	case conf.MODE_ERROR:
+		fmt.Printf("%s\n\n", conf.Error)
+		conf.PrintHelp()
+		os.Exit(1)
+	case conf.MODE_HELP:
+		conf.PrintHelp()
 	}
 }

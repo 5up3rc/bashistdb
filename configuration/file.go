@@ -15,7 +15,6 @@
 //      You should have received a copy of the GNU General Public License
 // along with bashistdb.  If not, see <http://www.gnu.org/licenses/>.
 
-// Package configuration handles the configuration of bashistdb.
 package configuration
 
 import (
@@ -42,16 +41,16 @@ func readConfFile() error {
 		e := &exportFields{}
 		if err = json.Unmarshal(c, e); err == nil {
 			if e.Database != "" {
-				databaseEnv = e.Database
+				database = e.Database
 			}
 			if e.Remote != "" {
-				remoteEnv = e.Remote
+				remote = e.Remote
 			}
 			if e.Port != "" {
-				portEnv = e.Port
+				port = e.Port
 			}
 			if e.Key != "" {
-				passphraseEnv = e.Key
+				passphrase = e.Key
 			}
 			foundConfFile = true
 		} else {
