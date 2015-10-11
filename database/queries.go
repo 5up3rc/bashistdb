@@ -137,6 +137,8 @@ func (d Database) RunQuery(p conf.QueryParams) ([]byte, error) {
 		return d.Demo(p)
 	case conf.QUERY_ROW:
 		return d.ReturnRow(p)
+	case conf.DELETE:
+		return d.DeleteRows(p)
 	}
 
 	return []byte{}, errors.New("Unknown query type.")
@@ -223,4 +225,26 @@ func (d Database) ReturnRow(qp conf.QueryParams) ([]byte, error) {
 		return []byte{}, err
 	}
 	return []byte(command), nil
+}
+
+// DeleteRows deletes a range of rows.
+func (d Database) DeleteRows(qp conf.QueryParams) ([]byte, error) {
+	tx, err := d.Begin()
+	defer tx.Rollback()
+	if err != nil {
+		return []byte{}, err
+	}
+	stmt, err := tx.Prepare(`DELETE FROM history WHERE rowid=?`)
+	if err != nil {
+		return []byte{}, err
+	}
+
+	for i := len(qp.Rows) - 1; i >= 0; i-- {
+		_, err = stmt.Exec(qp.Rows[i])
+		if err != nil {
+			return []byte{}, err
+		}
+	}
+	tx.Commit()
+	return []byte("No errors during deletion."), nil
 }

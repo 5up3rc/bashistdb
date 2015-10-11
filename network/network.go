@@ -37,9 +37,9 @@ import (
 const (
 	RESULT  = "result"  // (query) results that should be printed
 	HISTORY = "history" // history to import
-	STATS   = "stats"   // ask for some stats
-	QUERY   = "query"   // query to run
-	LOGINFO = "info"    // results that should go to log.Info
+	//	STATS   = "stats"   // ask for some stats // Deprecated 11 Oct 2015
+	QUERY   = "query" // query to run
+	LOGINFO = "info"  // results that should go to log.Info
 )
 
 type Message struct {
