@@ -58,8 +58,7 @@ var (
 	uniqueSet    = false
 	usersSet     = false
 	row          = 0
-	// Here we will store the non flag arguments
-	query = ""
+	// Custom Flags that need custom (non-flag package code) to parse and set. //
 	// These are not parsed from flags but we set them with flag.Visit
 	userSet   = false
 	hostSet   = false
@@ -78,7 +77,7 @@ var (
 // Set visited flags so we may have boolean expression criteria
 func setVisitedFlags(f *flag.Flag) {
 	switch f.Name {
-	case "u", "user":
+	case "U", "user":
 		userSet = true
 	case "H", "host":
 		hostSet = true
@@ -95,7 +94,7 @@ func setVisitedFlags(f *flag.Flag) {
 
 // Set all boolean flags. Besides flag vars, this is also for stdin
 // detection and query detection (non-flag argument).
-func setBooleanFlags() {
+func parseCustomFlags() {
 	// Set boolean counterparts for non-boolean flag vars.
 	flag.Visit(setVisitedFlags)
 
@@ -209,9 +208,8 @@ func setOpAndQParams() {
 		QParams.User, QParams.Host = "%", "%"
 	}
 
-	// Prepare query term. Join non-flag args and prefix-suffix with wildcard
+	// Query is the non flag os.Args parts.
 	QParams.Command = "%" + strings.Join(flag.Args(), " ") + "%" // Grep like behaviour
-
 }
 
 // Sets and parses flags. Helps for testing to separate these.
@@ -255,8 +253,7 @@ func setParseFlags() {
 // parse is the “main” of out configuration code.
 // Configuration seems a bit messy but that's the way it is.
 func parse() error {
-	// If this is set, skip setting and parsing flags. We are testing
-	// and we don;t need readConfFile has already run.
+	// If this is set, skip reading settings from configuration file.
 	if t := os.Getenv("BASHISTDB_TEST"); t == "" {
 		if err := readConfFile(); err != nil {
 			return err
@@ -268,12 +265,11 @@ func parse() error {
 		port = bashistPort
 	}
 
-	// If this is set, skip setting and parsing flags. We are testing
-	// and setParseFlags has already run.
-	if t := os.Getenv("BASHISTDB_TEST"); t == "" {
-		setParseFlags()
-		setBooleanFlags()
-	}
+	// Set flag vars and parse them
+	setParseFlags()
+
+	// Set custom flags (non flag-package variables)
+	parseCustomFlags()
 
 	if helpSet {
 		Mode = MODE_HELP
@@ -325,26 +321,7 @@ func parse() error {
 	}
 	Hostname = host // TODO: remove
 
-	// Welcome message
-	m := ""
-	switch Mode {
-	case MODE_SERVER:
-		m = "server"
-	case MODE_CLIENT:
-		m = "client"
-	case MODE_LOCAL:
-		m = "local"
-	}
-
-	Log.Info.Println("Welcome " + User + "@" + Hostname + ". Bashistdb is in " + m + " mode.")
-	Log.Debug.Println("Loaded some settings from environment. Configuration file and flags can override them.")
-	if foundConfFile {
-		Log.Info.Println("Loaded some settings from ~/.bashistdbconf. Command line flags can override them.")
-	}
-
-	if Operation == OP_QUERY {
-		Log.Info.Printf("Your query parameters are user: %s, host: %s, command line: %s.\n", QParams.User, QParams.Host, QParams.Command)
-	}
+	welcomeMessages()
 
 	// Set database filename
 	Database = database
@@ -374,4 +351,27 @@ func parse() error {
 	Log.Debug.Printf("Database: %s, mode: %d, operation: %d, address: %s\n", Database, Mode, Operation, Address)
 
 	return nil
+}
+
+func welcomeMessages() {
+	// Welcome message
+	m := ""
+	switch Mode {
+	case MODE_SERVER:
+		m = "server"
+	case MODE_CLIENT:
+		m = "client"
+	case MODE_LOCAL:
+		m = "local"
+	}
+
+	Log.Info.Println("Welcome " + User + "@" + Hostname + ". Bashistdb is in " + m + " mode.")
+	Log.Debug.Println("Loaded some settings from environment. Configuration file and flags can override them.")
+	if foundConfFile {
+		Log.Info.Println("Loaded some settings from ~/.bashistdbconf. Command line flags can override them.")
+	}
+
+	if Operation == OP_QUERY {
+		Log.Info.Printf("Your query parameters are user: %s, host: %s, command line: %s.\n", QParams.User, QParams.Host, QParams.Command)
+	}
 }
