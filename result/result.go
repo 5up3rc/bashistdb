@@ -75,10 +75,13 @@ func (r Result) AddRow(row int, user, host string, command string, datetime time
 
 	switch *r.written {
 	case true:
-		if r.format != conf.FORMAT_JSON {
-			_ = r.out.WriteByte('\n')
-		} else {
+		switch r.format {
+		case conf.FORMAT_JSON:
 			_, _ = r.out.WriteString(",\n")
+		case conf.FORMAT_ROWS:
+			_, _ = r.out.WriteString(",")
+		default:
+			_ = r.out.WriteByte('\n')
 		}
 	default:
 		*r.written = true
@@ -99,6 +102,8 @@ func (r Result) AddRow(row int, user, host string, command string, datetime time
 		f = ""
 	case conf.FORMAT_EXPORT:
 		f = fmt.Sprintf(FORMAT_EXPORT_S, user, host, datetime.Format(RFC3339alt), command)
+	case conf.FORMAT_ROWS:
+		f = fmt.Sprintf(FORMAT_ROWS_S, row)
 	case conf.FORMAT_COMMAND_LINE:
 		fallthrough
 	default:
