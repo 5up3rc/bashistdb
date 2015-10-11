@@ -57,9 +57,9 @@ func main() {
 		}
 	case conf.MODE_ERROR:
 		fmt.Printf("%s\n\n", conf.Error)
-		conf.PrintHelp()
+		conf.PrintHelp(os.Stderr) // On error help goes to stderr
 		os.Exit(1)
 	case conf.MODE_HELP:
-		conf.PrintHelp()
+		conf.PrintHelp(os.Stdout) // Help when asked goes to stdout
 	}
 }

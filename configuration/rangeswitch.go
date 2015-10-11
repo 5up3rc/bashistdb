@@ -57,7 +57,7 @@ func parseRange(arg string) ([]int, error) {
 				nums = append(nums, i)
 			}
 		} else { // bad arguments
-			errs[0] = errors.New("bad number: " + v)
+			errs[0] = errors.New("bad numeric argument: " + v)
 		}
 
 		for _, v := range errs {

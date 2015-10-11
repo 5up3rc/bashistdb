@@ -58,14 +58,16 @@ var (
 	uniqueSet    = false
 	usersSet     = false
 	row          = 0
+	delRows      = ""
 	// Custom Flags that need custom (non-flag package code) to parse and set. //
 	// These are not parsed from flags but we set them with flag.Visit
-	userSet   = false
-	hostSet   = false
-	remoteSet = false
-	topkSet   = false
-	lastkSet  = false
-	rowSet    = false
+	userSet    = false
+	hostSet    = false
+	remoteSet  = false
+	topkSet    = false
+	lastkSet   = false
+	rowSet     = false
+	delRowsSet = false
 	// These are set with manual searches
 	querySet = false
 	stdinSet = false
@@ -89,6 +91,8 @@ func setVisitedFlags(f *flag.Flag) {
 		lastkSet = true
 	case "row":
 		rowSet = true
+	case "del":
+		delRowsSet = true
 	}
 }
 
@@ -142,6 +146,10 @@ func checkFlagCombination() error {
 		return errors.New("Incompatible options: -row combined with query")
 	}
 
+	if delRowsSet && (lastkSet || topkSet || querySet || rowSet || usersSet) {
+		return errors.New("Incompatible options: -del combined with other type of query")
+	}
+
 	// Check mode-operation incompatibility
 	if Mode == MODE_SERVER && QParams.Type != QUERY_DEMO {
 		return errors.New("Incompatible options: asked for server mode and other functions.\n\n")
@@ -150,7 +158,8 @@ func checkFlagCombination() error {
 }
 
 // Sets Operation Query Parameters
-func setOpAndQParams() {
+func setOpAndQParams() error {
+	var err error
 	// Determine operation (used in local and client mode)
 	switch {
 	case topkSet:
@@ -171,6 +180,13 @@ func setOpAndQParams() {
 		Operation = OP_QUERY
 		QParams.Type = QUERY_ROW
 		QParams.Kappa = row
+	case delRowsSet:
+		Operation = OP_QUERY
+		QParams.Type = DELETE
+		QParams.Rows, err = parseRange(delRows)
+		if err != nil {
+			return err
+		}
 	case stdinSet:
 		Operation = OP_IMPORT
 	default: // Demo mode
@@ -210,6 +226,7 @@ func setOpAndQParams() {
 
 	// Query is the non flag os.Args parts.
 	QParams.Command = "%" + strings.Join(flag.Args(), " ") + "%" // Grep like behaviour
+	return nil
 }
 
 // Sets and parses flags. Helps for testing to separate these.
@@ -246,6 +263,7 @@ func setParseFlags() {
 	flag.BoolVar(&usersSet, "users", usersSet, "show users in database")
 	flag.BoolVar(&localSet, "local", localSet, "force local mode")
 	flag.IntVar(&row, "row", row, "return this row")
+	flag.StringVar(&delRows, "del", delRows, "delete these rows")
 
 	flag.Parse()
 }
@@ -295,7 +313,9 @@ func parse() error {
 		Mode = MODE_LOCAL
 	}
 
-	setOpAndQParams()
+	if err := setOpAndQParams(); err != nil {
+		return err
+	}
 
 	if err := checkFlagCombination(); err != nil {
 		return err

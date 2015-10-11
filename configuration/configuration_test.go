@@ -38,6 +38,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"testing"
 )
@@ -99,46 +100,108 @@ func resetFlags(args ...string) {
 }
 
 func TestParse(t *testing.T) {
-	// Test a simple demo in remote mode
-	want := exportedVars{Mode: MODE_CLIENT, Operation: OP_QUERY, Address: "10.10.0.1:4000", Database: "test.sqlite", User: "test", Hostname: "test", QParams: QueryParams{Type: QUERY_DEMO, User: "test", Host: "test", Format: FORMAT_DEFAULT, Command: "%%"}}
-	resetFlags("cmd", "-r", "10.10.0.1", "-p", "4000", "-db", "test.sqlite")
-	if err := parse(); err != nil {
-		t.Fatalf(err.Error())
-	}
-	if err := compare(want); err != nil {
-		t.Fatalf("Simple demo with remote.\n" + err.Error())
-	}
+	const (
+		_  = iota
+		OK // We expect test to pass
+		ER // We expect test to return error
+	)
 
-	// Test lastk and local
-	want = exportedVars{Mode: MODE_LOCAL, Operation: OP_QUERY, Address: "", Database: "test.sqlite3", User: "test1", Hostname: "test2", QParams: QueryParams{Type: QUERY_LASTK, User: "test1", Host: "test2", Format: FORMAT_JSON, Command: "%git%", Unique: true, Kappa: 5}}
-	resetFlags("cmd", "-U", "test1", "-host", "test2", "-lastk", "5", "-format", "json", "-unique", "git")
-	if err := parse(); err != nil {
-		t.Fatalf(err.Error())
-	}
-	if err := compare(want); err != nil {
-		t.Fatalf("Test lastk and local.\n" + err.Error())
-	}
-
-	// Test topk and lastk incompatibility
-	resetFlags("cmd", "-lastk", "5", "-topk", "5")
-	if err := parse(); err == nil {
-		t.Fatalf("Test lastk and topk incompatibility. Accepted incompatible modes.")
-	}
-	resetFlags("cmd", "-tail", "5", "-topk", "5")
-	if err := parse(); err == nil {
-		t.Fatalf("Test tail and topk incompatibility. Accepted incompatible modes.")
-	}
-
-	// Test server and operation query incompatibility
-	resetFlags("cmd", "-U", "test1", "-host", "test2", "-lastk", "5", "-format", "json", "-unique", "-s", "git")
-	if err := parse(); err == nil {
-		t.Fatalf("Test server and operation incompatibility. Accepted incompatible modes.")
-	}
-
-	// Test server and remote incompatibility
-	resetFlags("cmd", "-s", "-r", "localhost")
-	if err := parse(); err == nil {
-		t.Fatalf("Test server and remote incompatibility. Accepted incompatible modes.")
+	test := []struct {
+		want   exportedVars
+		expect int
+		input  []string
+		test   string
+	}{
+		{
+			want: exportedVars{Mode: MODE_CLIENT, Operation: OP_QUERY, Address: "10.10.0.1:4000", Database: "test.sqlite", User: "test", Hostname: "test",
+				QParams: QueryParams{Type: QUERY_DEMO, User: "test", Host: "test", Format: FORMAT_DEFAULT, Command: "%%"}},
+			expect: OK,
+			input:  []string{"cmd", "-r", "10.10.0.1", "-p", "4000", "-db", "test.sqlite"},
+			test:   "Test a simple demo in remote mode: ",
+		},
+		{
+			expect: ER,
+			input:  []string{"cmd", "-lastk", "5", "-topk", "5"},
+			test:   "Test topk and lastk incompatibility: ",
+		},
+		{
+			want: exportedVars{Mode: MODE_LOCAL, Operation: OP_QUERY, Address: "", Database: "test.sqlite3", User: "test1", Hostname: "test2",
+				QParams: QueryParams{Type: QUERY_LASTK, User: "test1", Host: "test2", Format: FORMAT_JSON, Command: "%git%", Unique: true, Kappa: 5}},
+			expect: OK,
+			input:  []string{"cmd", "-U", "test1", "-host", "test2", "-lastk", "5", "-format", "json", "-unique", "git"},
+			test:   "Test lastk and non flag local: ",
+		},
+		{
+			expect: ER,
+			input:  []string{"cmd", "-tail", "5", "-topk", "5"},
+			test:   "Test tail and topk incompatibility: ",
+		},
+		{
+			expect: ER,
+			input:  []string{"cmd", "-U", "test1", "-host", "test2", "-lastk", "5", "-format", "json", "-unique", "-s", "git"},
+			test:   "Test server and operation incompatibility: ",
+		},
+		{
+			expect: ER,
+			input:  []string{"cmd", "-s", "-r", "localhost"},
+			test:   "Test server and remote incompatibility: ",
+		},
+		{
+			expect: ER,
+			input:  []string{"cmd", "-r", "localhost", "-row", "500", "-unique", "ls"},
+			test:   "Test row - default query incompatibility: ",
+		},
+		{
+			want: exportedVars{Mode: MODE_CLIENT, Operation: OP_QUERY, Address: "localhost:25625", Database: "test.sqlite3", User: "test", Hostname: "test",
+				QParams: QueryParams{Type: QUERY_ROW, User: "test", Host: "test", Format: FORMAT_BASH_HISTORY, Command: "%%", Unique: true, Kappa: 500}},
+			expect: OK,
+			input:  []string{"cmd", "-r", "localhost", "-row", "500", "-format", "restore", "-unique"},
+			test:   "Test row query: ",
+		},
+		{
+			want: exportedVars{Mode: MODE_CLIENT, Operation: OP_QUERY, Address: "localhost:25625", Database: "test.sqlite3", User: "test", Hostname: "test",
+				QParams: QueryParams{Type: QUERY_ROW, User: "test", Host: "test", Format: FORMAT_DEFAULT, Command: "%%", Unique: true, Kappa: 500}},
+			expect: OK,
+			input:  []string{"cmd", "-r", "localhost", "-row", "500", "-format", "badformat", "-unique"},
+			test:   "Test non-existant format, use default: ",
+		},
+		{
+			want: exportedVars{Mode: MODE_LOCAL, Operation: OP_QUERY, Address: "", Database: "test.sqlite3", User: "test", Hostname: "test",
+				QParams: QueryParams{Type: QUERY, User: "%", Host: "%", Format: FORMAT_DEFAULT, Command: "%s%s%"}},
+			expect: OK,
+			input:  []string{"cmd", "-g", "s%s"},
+			test:   "Test global flag: ",
+		},
+		{
+			want: exportedVars{Mode: MODE_LOCAL, Operation: OP_QUERY, Address: "", Database: "test.sqlite3", User: "test", Hostname: "test",
+				QParams: QueryParams{Type: QUERY_USERS, User: "%", Host: "%", Format: FORMAT_DEFAULT, Command: "%%", Unique: false, Kappa: 0}},
+			expect: OK,
+			input:  []string{"cmd", "--local", "-users"},
+			test:   "Test users flag: ",
+		},
+		{
+			want: exportedVars{Mode: MODE_LOCAL, Operation: OP_QUERY, Address: "", Database: "test.sqlite3", User: "test", Hostname: "test",
+				QParams: QueryParams{Type: DELETE, User: "test", Host: "test", Format: FORMAT_DEFAULT, Command: "%%", Rows: []int{1, 3, 4, 5, 9}}},
+			expect: OK,
+			input:  []string{"cmd", "-del", "1,3-5,9,3"},
+			test:   "Test del flag: ",
+		},
+		{
+			expect: ER,
+			input:  []string{"cmd", "-del", "1,3-5,9,f"},
+			test:   "Test del flag with bad row ids: ",
+		},
+		{
+			expect: ER,
+			input:  []string{"cmd", "-del", "1,3-5", "-row", "5"},
+			test:   "Test del flag with non-compatible row flag: ",
+		},
+		{
+			want:   exportedVars{Mode: MODE_HELP},
+			expect: OK,
+			input:  []string{"cmd", "-s", "-k", "pass", "-h"},
+			test:   "Test help flag: ",
+		},
 	}
 
 	// Test remote override by server (remote set by env or conf file)
@@ -148,47 +211,26 @@ func TestParse(t *testing.T) {
 		t.Fatalf("Test remote override by server failed. " + err.Error())
 	}
 
-	// Test row and row - default query incompatibility
-	want = exportedVars{Mode: MODE_CLIENT, Operation: OP_QUERY, Address: "localhost:25625", Database: "test.sqlite3", User: "test", Hostname: "test", QParams: QueryParams{Type: QUERY_ROW, User: "test", Host: "test", Format: FORMAT_BASH_HISTORY, Command: "%%", Unique: true, Kappa: 500}}
-	resetFlags("cmd", "-r", "localhost", "-row", "500", "-unique", "ls")
-	if err := parse(); err == nil {
-		t.Fatalf("Test row - default query incompatibility failed.")
-	}
-	resetFlags("cmd", "-r", "localhost", "-row", "500", "-format", "restore", "-unique")
-	if err := parse(); err != nil {
-		t.Fatalf(err.Error())
-	}
-	if err := compare(want); err != nil {
-		t.Fatalf("Test row query.\n" + err.Error())
-	}
-	// Continue with non-existant format:
-	want.QParams.Format = FORMAT_DEFAULT
-	resetFlags("cmd", "-r", "localhost", "-row", "500", "-format", "badformat", "-unique")
-	if err := parse(); err != nil {
-		t.Fatalf(err.Error())
-	}
-	if err := compare(want); err != nil {
-		t.Fatalf("Test non existant format.\n" + err.Error())
-	}
-	// Continue with global flag:
-	want.QParams.Host, want.QParams.User = "%", "%"
-	resetFlags("cmd", "-r", "localhost", "-row", "500", "-g", "-unique")
-	if err := parse(); err != nil {
-		t.Fatalf(err.Error())
-	}
-	if err := compare(want); err != nil {
-		t.Fatalf("Test global flag.\n" + err.Error())
+	for _, v := range test {
+		resetFlags(v.input...)
+		err := parse()
+		switch v.expect {
+		case OK:
+			if err != nil {
+				t.Fatal(v.test + err.Error())
+			}
+			if err := compare(v.want); err != nil {
+				t.Fatal(v.test + err.Error())
+			}
+		case ER:
+			if err == nil {
+				t.Fatal(v.test + "should not get error")
+			}
+		}
 	}
 
-	// Test users.
-	want = exportedVars{Mode: MODE_LOCAL, Operation: OP_QUERY, Address: "", Database: "test.sqlite3", User: "test", Hostname: "test", QParams: QueryParams{Type: QUERY_USERS, User: "%", Host: "%", Format: FORMAT_DEFAULT, Command: "%%", Unique: false, Kappa: 0}}
-	resetFlags("cmd", "--local", "-users")
-	if err := parse(); err != nil {
-		t.Fatalf(err.Error())
-	}
-	if err := compare(want); err != nil {
-		t.Fatalf("Test users flag.\n" + err.Error())
-	}
+	PrintHelp(ioutil.Discard)
+
 }
 
 type exportedVars struct {
@@ -247,6 +289,9 @@ func compare(v exportedVars) error {
 	}
 	if QParams.Unique != v.QParams.Unique {
 		s += fmt.Sprintf("QParams.Unique wrong. Wanted %v, got %v.\n", v.QParams.Unique, QParams.Unique)
+	}
+	if !compareIntSlice(QParams.Rows, v.QParams.Rows) {
+		s += fmt.Sprintf("QParams.Rows wrong. Wanted %v, got %v.\n", v.QParams.Rows, QParams.Rows)
 	}
 
 	if s != "" {

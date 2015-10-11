@@ -19,6 +19,7 @@ package configuration
 
 import (
 	"fmt"
+	"io"
 
 	"github.com/andmarios/bashistdb/llog"
 )
@@ -46,6 +47,7 @@ const (
 	FORMAT_LOG          = "log"
 	FORMAT_JSON         = "json"
 	FORMAT_EXPORT       = "export"
+	FORMAT_ROWS         = "rows"
 	FORMAT_DEFAULT      = FORMAT_COMMAND_LINE
 )
 
@@ -57,6 +59,7 @@ var availableFormats = map[string]bool{
 	FORMAT_LOG:          true,
 	FORMAT_JSON:         true,
 	FORMAT_EXPORT:       true,
+	FORMAT_ROWS:         true,
 }
 
 // Run Modes, you may only add entries at the end.
@@ -78,8 +81,6 @@ const (
 	_         = iota
 	OP_IMPORT // Import history from stdin
 	OP_QUERY  // Run a query
-	OP_STATS  // Run some default stat queries (runs when no args are given)
-	OP_DELETE // Delete lines from history (to be implemented)
 )
 
 // A QueryParams contains parameters that are used to run a query.
@@ -92,6 +93,7 @@ type QueryParams struct {
 	Format  string // Return format
 	Command string // Search Term for command line field
 	Unique  bool   // Return unique command lines
+	Rows    []int  // Rowids
 }
 
 // Available query types
@@ -103,6 +105,7 @@ const (
 	QUERY_CLIENTS = "clients" // unique clients connected
 	QUERY_DEMO    = "demo"    // Run some demo queries
 	QUERY_ROW     = "row"     // Return a plain single row given its rowid
+	DELETE        = "delete"  // Delete rows given their rowid
 )
 
 // We do this in order to be able to test the parse code (we can't test init).
@@ -113,8 +116,8 @@ func init() {
 	}
 }
 
-func PrintHelp() {
-	fmt.Println("" + `Usage of bashistdb.
+func PrintHelp(w io.Writer) {
+	fmt.Fprintln(w, ""+`Usage of bashistdb.
 Query or run in server mode:
   bashistdb [OPTIONS] [QUERY]
 Import history:
@@ -129,7 +132,7 @@ and suffix. Think of it as grep.
 Available options:
     -db FILE
        Path to database file. It will be created if it doesn't exist.
-       Current: ` + database + `
+       Current: `+database+`
     -V     Print version info and exit.
     -v , -verbose LEVEL
        Verbosity level: 0 for silent, 1 for info, 2 for debug.
@@ -138,12 +141,12 @@ Available options:
        Optional user name to use instead of reading $USER variable. In query
        operations it doubles as search term for the username. Wildcard
        operators (%, _) work but unlike query we search for the exact term.
-       Current: ` + user + `
+       Current: `+user+`
     -H, -host HOST
        Optional hostname to use instead of reading it from the system. In query
        operations, it doubles as search term for the hostname. Wildcard
        operators (%, _) work but unlike query we search for the exact term.
-       Current: ` + host + `
+       Current: `+host+`
     -g     Sets user and host to % for query operation. (equiv: -user % -host %)
     -u, -unique    If the query type permits, return unique results for the
        command line field (returns the most recent execution of each command).
@@ -154,30 +157,33 @@ Available options:
        Return the K most frequent commands for the set user and host. If you add
        a query term it will return the K most frequent commands that include it.
     -row K    Return the K row from the database. You can pipe it to bash.
+    -del EXPRESSION     (e.g: 9-13,100,5)
+       Delete rows with the given row ids. Row ids stay unique unless you delete
+       the last row, where its id will be given to the next new entry.
     -users    Return the users in the database. You may use search criteria, eg
       to find users who run a certain commands. By default this option searches
       across all users and host unless you explicitly set them via flags.
     -s, -server    Run in server mode. Bashistdb currently binds to 0.0.0.0.
     -r, -remote SERVER_ADDRESS
        Run in network client mode, connect to server address. You may also set
-       this with the BASHISTDB_REMOTE env variable. Current: ` + remote + `
+       this with the BASHISTDB_REMOTE env variable. Current: `+remote+`
     -p, -port PORT
        Server port to listen on/connect to. You may also set this with the
-       BASHISTDB_PORT env variable. Current: ` + port + `
+       BASHISTDB_PORT env variable. Current: `+port+`
     -k, -key PASSPHRASE
        Passphrase to use for creating keys to encrypt network communications.
        You may also set it via the BASHISTDB_KEY env variable.
     -f, --format FORMAT
        How to format query output. Available types are:
-      ` + FORMAT_ALL + ", " + FORMAT_BASH_HISTORY + ", " +
-		FORMAT_COMMAND_LINE + ", " + FORMAT_JSON + ", " +
-		FORMAT_LOG + ", " + FORMAT_TIMESTAMP + ", " + FORMAT_EXPORT + `
-       Format '` + FORMAT_BASH_HISTORY + `' can be used to restore your history file.
-       Format '` + FORMAT_EXPORT + `' can be used to pipe your history to another
+      `+FORMAT_ALL+", "+FORMAT_BASH_HISTORY+", "+
+		FORMAT_COMMAND_LINE+", "+FORMAT_JSON+", "+
+		FORMAT_LOG+", "+FORMAT_TIMESTAMP+", "+FORMAT_EXPORT+`
+       Format '`+FORMAT_BASH_HISTORY+`' can be used to restore your history file.
+       Format '`+FORMAT_EXPORT+`' can be used to pipe your history to another
        instance of bashistdb, while retaining user and host of each command.
-       Default: ` + FORMAT_DEFAULT + `
+       Default: `+FORMAT_DEFAULT+`
     -save    Write some settings (database, remote, port, key) to configuration
-       file: ` + confFile + `. These settings override environment variables.
+       file: `+confFile+`. These settings override environment variables.
     -h, --help    This text.
     -init    Setup system for bashistdb: (1) Save settings to file. (2) Add to
        bashrc functions to timestamp history and sent each command to bashistdb
