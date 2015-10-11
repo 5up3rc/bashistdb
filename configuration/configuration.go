@@ -294,6 +294,14 @@ func parse() error {
 		return nil
 	}
 
+	// Verbosity reaches up to 2 (DEBUG)
+	if verbosity > 2 {
+		verbosity = 2
+	}
+
+	// Create global logger
+	Log = llog.New(verbosity)
+
 	// Determine run mode. A run mode is expected to run and then bashistdb toexit.
 	switch { // Cases are in precedence order
 	case setupSet:
@@ -320,14 +328,6 @@ func parse() error {
 	if err := checkFlagCombination(); err != nil {
 		return err
 	}
-
-	// Verbosity reaches up to 2 (DEBUG)
-	if verbosity > 2 {
-		verbosity = 2
-	}
-
-	// Create global logger
-	Log = llog.New(verbosity)
 
 	// Protest about username issues.
 	if user == "" {

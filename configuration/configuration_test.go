@@ -162,7 +162,7 @@ func TestParse(t *testing.T) {
 			want: exportedVars{Mode: MODE_CLIENT, Operation: OP_QUERY, Address: "localhost:25625", Database: "test.sqlite3", User: "test", Hostname: "test",
 				QParams: QueryParams{Type: QUERY_ROW, User: "test", Host: "test", Format: FORMAT_DEFAULT, Command: "%%", Unique: true, Kappa: 500}},
 			expect: OK,
-			input:  []string{"cmd", "-r", "localhost", "-row", "500", "-format", "badformat", "-unique"},
+			input:  []string{"cmd", "-r", "localhost", "-row", "500", "-format", "abadformat", "-unique"},
 			test:   "Test non-existant format, use default: ",
 		},
 		{

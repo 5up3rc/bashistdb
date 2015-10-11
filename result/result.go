@@ -36,6 +36,7 @@ const (
 	FORMAT_LOG_S          = "%s %s@%s %s"
 	FORMAT_JSON_S         = "" // We use encoding/json for JSON
 	FORMAT_EXPORT_S       = "%s %s %s %s"
+	FORMAT_ROWS_S         = "%d"
 )
 
 // A Result is used to store the formatted output of a query.
