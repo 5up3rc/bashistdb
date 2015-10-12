@@ -1,10 +1,8 @@
 /*
-Command addTimestamp2Hist adds timestamps to an untimestamped
-bash history file. You may choose the starting date as X months
-before now. Then the utility will add timestamps at equal
+Package timestamp adds timestamps to an untimestamped
+bash history. You may choose the starting date as X months
+before now. Then the function will add timestamps at equal
 intervals for every line in history.
-
-    $ addTimestamp2Hist ~/.bash_history
 */
 package timestamp
 

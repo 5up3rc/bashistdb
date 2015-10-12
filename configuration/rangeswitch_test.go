@@ -67,7 +67,7 @@ func compareIntSlice(x, y []int) bool {
 	if len(x) != len(y) {
 		return false
 	}
-	for i, _ := range x {
+	for i := range x {
 		if x[i] != y[i] {
 			return false
 		}

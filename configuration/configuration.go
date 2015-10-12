@@ -362,10 +362,8 @@ func parse() error {
 	if writeconfSet {
 		if err := writeConfFile(); err != nil {
 			return err
-		} else {
-			Log.Info.Println("Wrote settings to ", confFile)
 		}
-
+		Log.Info.Println("Wrote settings to ", confFile)
 	}
 
 	Log.Debug.Printf("Database: %s, mode: %d, operation: %d, address: %s\n", Database, Mode, Operation, Address)

@@ -37,11 +37,11 @@ import (
 const (
 	RESULT  = "result"  // (query) results that should be printed
 	HISTORY = "history" // history to import
-	//	STATS   = "stats"   // ask for some stats // Deprecated 11 Oct 2015
-	QUERY   = "query" // query to run
-	LOGINFO = "info"  // results that should go to log.Info
+	QUERY   = "query"   // query to run
+	LOGINFO = "info"    // results that should go to log.Info
 )
 
+// A Message is the communication unit between server and client.
 type Message struct {
 	Type     string
 	Payload  []byte
@@ -58,6 +58,7 @@ func init() {
 	log = conf.Log
 }
 
+// ServerMode is the server process of bashistdb.
 func ServerMode() error {
 	var err error
 	db, err = database.New()
@@ -86,6 +87,7 @@ func ServerMode() error {
 	//	return nil // go vet doesn't like this...
 }
 
+// ClientMode is the client process fo bashistdb.
 func ClientMode() error {
 	log.Debug.Println("Connecting to: ", conf.Address)
 	conn, err := net.Dial("tcp", conf.Address)

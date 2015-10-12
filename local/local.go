@@ -31,6 +31,7 @@ import (
 
 var log *llog.Logger
 
+// Run is the local process of bashistdb.
 func Run() error {
 	db, err := database.New()
 	if err != nil {

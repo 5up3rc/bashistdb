@@ -41,7 +41,7 @@ func init() {
 	log = conf.Log
 }
 
-// Setup configures your system to use bashistdb:
+// Apply configures your system to use bashistdb:
 // 1. It appends to your ~/.bashrc two lines to make your history timestamped
 //    and your prompt send your commands to bashistdb.
 // 2. It (optionally) adds timestamps to your current history file, so it can
@@ -62,19 +62,19 @@ func Apply(write bool) error {
 
 	// Convert bash_history
 	if write {
-		bash_history := os.Getenv("HOME") + "/.bash_history"
-		historyIn, err := ioutil.ReadFile(bash_history)
+		bashHistory := os.Getenv("HOME") + "/.bash_history"
+		historyIn, err := ioutil.ReadFile(bashHistory)
 		if err != nil {
 			return errors.New("Could not read bash_history: " + err.Error())
 		}
 
 		historyOut := timestamp.Convert(historyIn, 12)
 
-		err = ioutil.WriteFile(bash_history, historyOut, 0600)
+		err = ioutil.WriteFile(bashHistory, historyOut, 0600)
 		if err != nil {
 			return errors.New("Could not write bash_history: " + err.Error())
 		}
-		log.Println("Updated " + bash_history)
+		log.Println("Updated " + bashHistory)
 	}
 
 	return nil

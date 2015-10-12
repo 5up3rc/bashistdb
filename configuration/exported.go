@@ -116,6 +116,7 @@ func init() {
 	}
 }
 
+// PrintHelp prints the help text.
 func PrintHelp(w io.Writer) {
 	fmt.Fprintln(w, ""+`Usage of bashistdb.
 Query or run in server mode:

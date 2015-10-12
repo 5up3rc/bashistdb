@@ -30,7 +30,7 @@ import (
 // So if given '1,5-9,6,120,11' it will return: [ 1 5 6 7 8 9 11 120 ]
 func parseRange(arg string) ([]int, error) {
 	args := strings.Split(arg, ",")
-	nums := make([]int, 0)
+	var nums []int
 
 	single := regexp.MustCompile("^[0-9]+$")
 	space := regexp.MustCompile("^[0-9]+-[0-9]+$")
@@ -68,7 +68,7 @@ func parseRange(arg string) ([]int, error) {
 	}
 	sort.Ints(nums)
 	seen := make(map[int]bool)
-	out := make([]int, 0)
+	var out []int
 	for _, v := range nums {
 		if !seen[v] {
 			seen[v] = true

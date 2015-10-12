@@ -216,7 +216,7 @@ func (d Database) Demo(qp conf.QueryParams) (res []byte, e error) {
 	return result.Bytes(), nil
 }
 
-// Return row returns a single row with no other data.
+// ReturnRow returns a single row with no other data.
 // It is useful to pipe to bash.
 func (d Database) ReturnRow(qp conf.QueryParams) ([]byte, error) {
 	var command string

@@ -63,8 +63,8 @@ func New(format string) *Result {
 	return &Result{out: &out, written: &w, format: format, digits: &d}
 }
 
-// A rowJson is an internal struct to use with json.Marshal
-type rowJson struct {
+// A rowJSON is an internal struct to use with json.Marshal
+type rowJSON struct {
 	Row                           int
 	Datetime, User, Host, Command string
 }
@@ -97,7 +97,7 @@ func (r Result) AddRow(row int, user, host string, command string, datetime time
 	case conf.FORMAT_LOG:
 		f = fmt.Sprintf(FORMAT_LOG_S, datetime.Format(RFC3339alt), user, host, command)
 	case conf.FORMAT_JSON:
-		b, _ := json.Marshal(rowJson{row, datetime.Format(RFC3339alt), user, host, command})
+		b, _ := json.Marshal(rowJSON{row, datetime.Format(RFC3339alt), user, host, command})
 		_, _ = r.out.Write(b)
 		f = ""
 	case conf.FORMAT_EXPORT:
@@ -140,10 +140,8 @@ func (r Result) AddCountRow(count int, command string) {
 }
 
 func digits(n int) int {
-
 	if n < 10 {
 		return 1
-	} else {
-		return digits(n/10) + 1
 	}
+	return digits(n/10) + 1
 }
