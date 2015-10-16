@@ -59,6 +59,7 @@ var (
 	usersSet     = false
 	row          = 0
 	delRows      = ""
+	regexSet     = false
 	// Custom Flags that need custom (non-flag package code) to parse and set. //
 	// These are not parsed from flags but we set them with flag.Visit
 	userSet    = false
@@ -150,6 +151,10 @@ func checkFlagCombination() error {
 		return errors.New("Incompatible options: -del combined with other type of query")
 	}
 
+	if regexSet && (lastkSet || topkSet || rowSet || usersSet || delRowsSet) {
+		Log.Info.Println("R(egexp) flag works only for simple queries. For other types it works as an exact match flag.")
+	}
+
 	// Check mode-operation incompatibility
 	if Mode == MODE_SERVER && QParams.Type != QUERY_DEMO {
 		return errors.New("Incompatible options: asked for server mode and other functions.\n\n")
@@ -225,7 +230,16 @@ func setOpAndQParams() error {
 	}
 
 	// Query is the non flag os.Args parts.
-	QParams.Command = "%" + strings.Join(flag.Args(), " ") + "%" // Grep like behaviour
+	// Depending on the pcre flag, we prepare the query differently.
+	switch regexSet {
+	case true:
+		QParams.Regex = true
+		QParams.Command = strings.Join(flag.Args(), " ")
+	default:
+		QParams.Regex = false
+		QParams.Command = "%" + strings.Join(flag.Args(), " ") + "%" // Grep like behaviour
+	}
+
 	return nil
 }
 
@@ -264,6 +278,7 @@ func setParseFlags() {
 	flag.BoolVar(&localSet, "local", localSet, "force local mode")
 	flag.IntVar(&row, "row", row, "return this row")
 	flag.StringVar(&delRows, "del", delRows, "delete these rows")
+	flag.BoolVar(&regexSet, "R", regexSet, "regular expression search")
 
 	flag.Parse()
 }

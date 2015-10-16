@@ -73,6 +73,7 @@ func resetFlags(args ...string) {
 	uniqueSet = false
 	usersSet = false
 	row = 0
+	regexSet = false
 	// Here we will store the non flag arguments //
 	// These are not parsed from flags but we set them with flag.Visit
 	userSet = false

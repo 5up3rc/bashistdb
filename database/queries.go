@@ -26,6 +26,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"regexp"
 	"time"
 
 	conf "github.com/andmarios/bashistdb/configuration"
@@ -92,17 +93,33 @@ func (d Database) LastK(qp conf.QueryParams) ([]byte, error) {
 
 // DefaultQuery returns history within the search criteria in the format requested
 func (d Database) DefaultQuery(qp conf.QueryParams) ([]byte, error) {
-	var rows *sql.Rows
+	// SQLite's regexp extension is problematic; most systems don't have it, loading
+	// it is extremely error prone (almost impossible to get right), even we manage
+	// to load it, it doesn't seem to work with our queries. Thus I use go's regexp
+	// library. This makes bashistdb slower when in regexp mode since it has to process
+	// all the history entries itself. Also it makes difficult to add pcre support
+	// to anything but the DefaultQuery
+	var regex *regexp.Regexp
 	var err error
+	commandQuery := "AND command LIKE ?" // This is used for normal searches. Fast.
+	if qp.Regex {
+		regex, err = regexp.Compile(qp.Command)
+		if err != nil {
+			return []byte{}, err
+		}
+		commandQuery = "" // For PCRE we do the search, so we want everything. Slow.
+	}
+
+	var rows *sql.Rows
 	switch qp.Unique {
 	case true:
 		rows, err = d.Query(`SELECT rowid, * FROM history
-                                        WHERE user LIKE ? AND host LIKE ? AND command LIKE ? ESCAPE '\'
+                                        WHERE user LIKE ? AND host LIKE ? `+commandQuery+` ESCAPE '\'
                                         GROUP BY command ORDER BY DATETIME ASC`,
 			qp.User, qp.Host, qp.Command)
 	default:
 		rows, err = d.Query(`SELECT rowid, * FROM history
-                                         WHERE user LIKE ? AND host LIKE ? AND command LIKE ? ESCAPE '\'`,
+                                         WHERE user LIKE ? AND host LIKE ? `+commandQuery+` ESCAPE '\'`,
 			qp.User, qp.Host, qp.Command)
 	}
 	if err != nil {
@@ -116,7 +133,14 @@ func (d Database) DefaultQuery(qp conf.QueryParams) ([]byte, error) {
 		var t time.Time
 		var row int
 		rows.Scan(&row, &user, &host, &command, &t)
-		res.AddRow(row, user, host, command, t)
+		switch qp.Regex {
+		case true:
+			if regex.MatchString(command) {
+				res.AddRow(row, user, host, command, t)
+			}
+		default:
+			res.AddRow(row, user, host, command, t)
+		}
 	}
 	// Return the result without the newline at the end.
 	return res.Formatted(), nil

@@ -94,6 +94,7 @@ type QueryParams struct {
 	Command string // Search Term for command line field
 	Unique  bool   // Return unique command lines
 	Rows    []int  // Rowids
+	Regex   bool   // Search is a regular expression
 }
 
 // Available query types
@@ -155,8 +156,14 @@ Available options:
     -g, --global
         Sets user and host to % for query operation. (equiv: -user % -host %)
 
-    -u, -unique    If the query type permits, return unique results for the
+    -u, -unique
+        If the query type permits, return unique results for the
         command line field (returns the most recent execution of each command).
+    -R
+        The query is a regular expession. This works only for the default query.
+        For other types of query (e.g lastk, topk), it works as an exact match
+        flag. Normally when you search for “term”, you really search for
+        “%term%” which gives a grep like behaviour. With -R, wildcards are gone.
 
     -lastk, -tail K
         Return the K most recent commands for the set user and host. If you add
