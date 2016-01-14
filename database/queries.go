@@ -27,6 +27,8 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"strconv"
+	"strings"
 	"time"
 
 	conf "github.com/andmarios/bashistdb/configuration"
@@ -163,6 +165,8 @@ func (d Database) RunQuery(p conf.QueryParams) ([]byte, error) {
 		return d.ReturnRow(p)
 	case conf.DELETE:
 		return d.DeleteRows(p)
+	case conf.QUERY_CONTENT:
+		return d.ContentQuery(p)
 	}
 
 	return []byte{}, errors.New("Unknown query type.")
@@ -271,4 +275,140 @@ func (d Database) DeleteRows(qp conf.QueryParams) ([]byte, error) {
 	}
 	tx.Commit()
 	return []byte("No errors during deletion."), nil
+}
+
+// ContentQuery returns matches of a row plus rows before or after the match.
+// Think of it as grep -A(fter) / -B(efore) / -C(ontent)
+// It works on 4 stages:
+// 1. find matches and get their datetime
+// 2. for each match, get the content asked by rowid
+// 3. if the content of two matches overlap, join them
+// 4. given the sets of rowids, get them from the database
+func (d Database) ContentQuery(qp conf.QueryParams) ([]byte, error) {
+	// Using Goland regexp library. Check DefaultQuery() for more info.
+	var regex *regexp.Regexp
+	var err error
+	commandQuery := "AND command LIKE ?" // This is used for normal searches. Fast.
+	if qp.Regex {
+		regex, err = regexp.Compile(qp.Command)
+		if err != nil {
+			return []byte{}, err
+		}
+		commandQuery = "" // For PCRE we do the search, so we want everything. Slow.
+	}
+
+	// Stage 1: find matches and get an array with their datetime
+	var rows *sql.Rows
+	rows, err = d.Query(`SELECT datetime, command FROM history
+                                         WHERE user LIKE ? AND host LIKE ? `+commandQuery+` ESCAPE '\'`,
+		qp.User, qp.Host, qp.Command)
+
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var hits []time.Time
+	for rows.Next() {
+		var t time.Time
+		var command string
+		rows.Scan(&t, &command)
+		switch qp.Regex {
+		case true:
+			if regex.MatchString(command) {
+				hits = append(hits, t)
+			}
+		default:
+			hits = append(hits, t)
+		}
+	}
+
+	// Stage 2: for each match create a slice with its content by rowid
+	var hitsContent [][]int
+	for _, v := range hits {
+		var content []int
+		// Before query also includes the current command, thus is always run.
+		rows, err = d.Query(`SELECT rowid, datetime FROM
+                                      (SELECT rowid, datetime FROM history
+	                                     WHERE datetime <= ? AND user LIKE ? AND host LIKE ? ESCAPE '\'
+                                         ORDER BY datetime DESC LIMIT ?)
+                                      ORDER BY datetime ASC`,
+			v, qp.User, qp.Host, qp.BeforeContent+1) // Here we include current query to before
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var row int
+			var datetime time.Time
+			rows.Scan(&row, &datetime)
+			content = append(content, row)
+		}
+		// After runs only if needed.
+		if qp.AfterContent > 0 {
+			rows, err = d.Query(`SELECT rowid, datetime FROM history
+	                                         WHERE datetime > ? AND user LIKE ? AND host LIKE ? ESCAPE '\'
+                                             ORDER BY datetime ASC LIMIT ?`,
+				v, qp.User, qp.Host, qp.AfterContent)
+			if err != nil {
+				return nil, err
+			}
+			defer rows.Close()
+			for rows.Next() {
+				var row int
+				var datetime time.Time
+				rows.Scan(&row, &datetime)
+				content = append(content, row)
+			}
+		}
+		hitsContent = append(hitsContent, content)
+	}
+
+	// Stage 3: let's merge the sets that overlap
+	for i := len(hitsContent) - 2; i >= 0; i-- {
+		for k, v := range hitsContent[i] {
+			if v == hitsContent[i+1][0] {
+				hitsContent[i] = append(hitsContent[i][:k], hitsContent[i+1]...)
+				if len(hitsContent) > i+2 {
+					hitsContent = append(hitsContent[:i+1], hitsContent[i+2:]...)
+				} else {
+					hitsContent = hitsContent[:i+1]
+				}
+				break
+			}
+		}
+	}
+
+	var out bytes.Buffer
+
+	// Stage 4: get the tuples for each set's rowids and add them formatted to the result
+	for i := 0; i < len(hitsContent); i++ {
+		var rowids []string
+		for _, v := range hitsContent[i] {
+			rowids = append(rowids, strconv.Itoa(v))
+		}
+		rows, err = d.Query(`SELECT rowid, * FROM history
+                                  WHERE user LIKE ? ESCAPE '\' AND host LIKE ? ESCAPE '\' AND rowid IN (`+
+			strings.Join(rowids, ",")+`)
+                                  ORDER BY datetime ASC`,
+			qp.User, qp.Host)
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
+
+		res := result.New(qp.Format)
+		for rows.Next() {
+			var user, host, command string
+			var t time.Time
+			var row int
+			rows.Scan(&row, &user, &host, &command, &t)
+			res.AddRow(row, user, host, command, t)
+		}
+		out.Write(res.Formatted())
+		if i < len(hitsContent)-1 {
+			out.WriteString("\n------------------\n")
+		}
+	}
+	return out.Bytes(), nil
 }

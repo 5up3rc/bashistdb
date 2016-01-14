@@ -86,18 +86,22 @@ const (
 // A QueryParams contains parameters that are used to run a query.
 // Depending on query type, some fields may not be used.
 type QueryParams struct {
-	Type    string // Query type
-	Kappa   int    // If topk or lastk, we store k here
-	User    string // Search User
-	Host    string // Search Host
-	Format  string // Return format
-	Command string // Search Term for command line field
-	Unique  bool   // Return unique command lines
-	Rows    []int  // Rowids
-	Regex   bool   // Search is a regular expression
+	Type          string // Query type
+	Kappa         int    // If topk or lastk, we store k here
+	User          string // Search User
+	Host          string // Search Host
+	Format        string // Return format
+	Command       string // Search Term for command line field
+	Unique        bool   // Return unique command lines
+	Rows          []int  // Rowids
+	Regex         bool   // Search is a regular expression
+	AfterContent  int    // Return also this many lines after match
+	BeforeContent int    // Return also this many lines before match
 }
 
 // Available query types
+// Since we implement a protocol and client/server could have different versions,
+// hardcoded strings instead of Go's autoincrement is better.
 const (
 	QUERY         = "query"   // A normal search (grep)
 	QUERY_LASTK   = "lastk"   // K most recent commands
@@ -106,6 +110,7 @@ const (
 	QUERY_CLIENTS = "clients" // unique clients connected
 	QUERY_DEMO    = "demo"    // Run some demo queries
 	QUERY_ROW     = "row"     // Return a plain single row given its rowid
+	QUERY_CONTENT = "content" // Content search (n lines before, after or both)
 	DELETE        = "delete"  // Delete rows given their rowid
 )
 
@@ -180,6 +185,9 @@ Available options:
         Return the users in the database. You may use search criteria, eg to
         find users who run a certain commands. By default this option searches
         across all users and host unless you explicitly set them via flags.
+    -A K, -B K, -C K
+        Also print K lines A(fter), B(efore) or before and after C(ontent) of
+        each match.
 
     -local
         Force local [db] mode, despite remote mode being set by env or conf.

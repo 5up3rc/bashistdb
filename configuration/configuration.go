@@ -38,37 +38,43 @@ const (
 // We set them all here so we can copy this to test for resetting vars
 var (
 	// These are used as actual flagvars
-	database     = os.Getenv("HOME") + "/.bashistdb.sqlite3"
-	versionSet   = false
-	verbosity    = 0
-	user         = os.Getenv("USER")
-	host, _      = os.Hostname()
-	serverSet    = false
-	remote       = os.Getenv("BASHISTDB_REMOTE")
-	port         = os.Getenv("BASHISTDB_PORT")
-	passphrase   = os.Getenv("BASHISTDB_KEY")
-	format       = FORMAT_DEFAULT
-	helpSet      = false
-	globalSet    = false
-	writeconfSet = false
-	setupSet     = false
-	topk         = 20
-	lastk        = 20
-	localSet     = false
-	uniqueSet    = false
-	usersSet     = false
-	row          = 0
-	delRows      = ""
-	regexSet     = false
+	database      = os.Getenv("HOME") + "/.bashistdb.sqlite3"
+	versionSet    = false
+	verbosity     = 0
+	user          = os.Getenv("USER")
+	host, _       = os.Hostname()
+	serverSet     = false
+	remote        = os.Getenv("BASHISTDB_REMOTE")
+	port          = os.Getenv("BASHISTDB_PORT")
+	passphrase    = os.Getenv("BASHISTDB_KEY")
+	format        = FORMAT_DEFAULT
+	helpSet       = false
+	globalSet     = false
+	writeconfSet  = false
+	setupSet      = false
+	topk          = 20
+	lastk         = 20
+	localSet      = false
+	uniqueSet     = false
+	usersSet      = false
+	row           = 0
+	delRows       = ""
+	regexSet      = false
+	afterContent  = 5
+	beforeContent = 5
+	content       = 5
 	// Custom Flags that need custom (non-flag package code) to parse and set. //
 	// These are not parsed from flags but we set them with flag.Visit
-	userSet    = false
-	hostSet    = false
-	remoteSet  = false
-	topkSet    = false
-	lastkSet   = false
-	rowSet     = false
-	delRowsSet = false
+	userSet          = false
+	hostSet          = false
+	remoteSet        = false
+	topkSet          = false
+	lastkSet         = false
+	rowSet           = false
+	delRowsSet       = false
+	afterContentSet  = false
+	beforeContentSet = false
+	contentSet       = false
 	// These are set with manual searches
 	querySet = false
 	stdinSet = false
@@ -94,6 +100,12 @@ func setVisitedFlags(f *flag.Flag) {
 		rowSet = true
 	case "del":
 		delRowsSet = true
+	case "A":
+		afterContentSet = true
+	case "B":
+		beforeContentSet = true
+	case "C":
+		contentSet = true
 	}
 }
 
@@ -155,6 +167,14 @@ func checkFlagCombination() error {
 		Log.Info.Println("R(egexp) flag works only for simple queries. For other types it works as an exact match flag.")
 	}
 
+	if uniqueSet && (afterContentSet || beforeContentSet || contentSet) {
+		Log.Info.Println("u(nique) flag doesn't work with content, before, after search")
+	}
+
+	if (afterContentSet || beforeContentSet || contentSet) && (lastkSet || topkSet || rowSet || usersSet || delRowsSet) {
+		return errors.New("Incompatible options: content search (-A, -B, -C) and a non standard query")
+	}
+
 	// Check mode-operation incompatibility
 	if Mode == MODE_SERVER && QParams.Type != QUERY_DEMO {
 		return errors.New("Incompatible options: asked for server mode and other functions.\n\n")
@@ -178,6 +198,18 @@ func setOpAndQParams() error {
 	case usersSet:
 		Operation = OP_QUERY
 		QParams.Type = QUERY_USERS
+	case afterContentSet, beforeContentSet, contentSet:
+		Operation = OP_QUERY
+		QParams.Type = QUERY_CONTENT
+		if afterContentSet {
+			QParams.AfterContent = afterContent
+		}
+		if beforeContentSet {
+			QParams.BeforeContent = beforeContent
+		}
+		if contentSet {
+			QParams.AfterContent, QParams.BeforeContent = content, content
+		}
 	case querySet: // We have non-flag arguments -> it is a query
 		Operation = OP_QUERY
 		QParams.Type = QUERY
@@ -279,7 +311,9 @@ func setParseFlags() {
 	flag.IntVar(&row, "row", row, "return this row")
 	flag.StringVar(&delRows, "del", delRows, "delete these rows")
 	flag.BoolVar(&regexSet, "R", regexSet, "regular expression search")
-
+	flag.IntVar(&afterContent, "A", afterContent, "return this many rows after match")
+	flag.IntVar(&beforeContent, "B", beforeContent, "return this many rows before match")
+	flag.IntVar(&content, "C", content, "return this many rows before and after match")
 	flag.Parse()
 }
 
