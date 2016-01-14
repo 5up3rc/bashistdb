@@ -388,10 +388,8 @@ func (d Database) ContentQuery(qp conf.QueryParams) ([]byte, error) {
 			rowids = append(rowids, strconv.Itoa(v))
 		}
 		rows, err = d.Query(`SELECT rowid, * FROM history
-                                  WHERE user LIKE ? ESCAPE '\' AND host LIKE ? ESCAPE '\' AND rowid IN (`+
-			strings.Join(rowids, ",")+`)
-                                  ORDER BY datetime ASC`,
-			qp.User, qp.Host)
+                                  WHERE rowid IN (` + strings.Join(rowids, ",") + `)
+                                  ORDER BY datetime ASC`)
 		if err != nil {
 			return nil, err
 		}
