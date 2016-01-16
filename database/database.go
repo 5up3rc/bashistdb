@@ -45,7 +45,7 @@ const RFC3339alt = "2006-01-02T15:04:05-0700"
 // VERSION is the database's schema supported version.
 // If your database is older it will be automatically migrated.
 // If it is newer you have to update your bashistdb copy.
-const VERSION = "2"
+const VERSION = "2.1"
 
 // A Database holds a bashistdb database.
 type Database struct {
@@ -110,30 +110,36 @@ func New() (Database, error) {
 }
 
 func initDB(db *sql.DB) error {
-	stmt := `CREATE TABLE history (
-                        user     TEXT,
-                        host     TEXT,
-                        command  TEXT,
-                        datetime DATETIME,
-                        PRIMARY KEY (user, command, datetime)
-                     );
-                    CREATE TABLE admin (
-                        key   TEXT PRIMARY KEY,
-                        value TEXT
-                     );
-                    CREATE TABLE connlog (
-                        datetime TEXT PRIMARY KEY,
-                        remote   TEXT
-                     );
-	            CREATE TABLE rlookup (
-                        ip      TEXT PRIMARY KEY,
-                        reverse TEXT
-                     );
-                    CREATE VIEW connections AS
-                         SELECT datetime, remote, reverse
-                           FROM connlog AS c
-                             LEFT JOIN rlookup AS r
-                               ON c.remote=r.ip;`
+	stmt := `
+CREATE TABLE history (
+    user     TEXT,
+    host     TEXT,
+    command  TEXT,
+    datetime DATETIME,
+    PRIMARY KEY (user, command, datetime)
+);
+CREATE INDEX HistoryDatetimeIdx ON history(datetime);
+
+CREATE TABLE admin (
+    key   TEXT PRIMARY KEY,
+    value TEXT
+ );
+
+CREATE TABLE connlog (
+    datetime TEXT PRIMARY KEY,
+    remote   TEXT
+ );
+
+CREATE TABLE rlookup (
+    ip      TEXT PRIMARY KEY,
+    reverse TEXT
+     );
+
+CREATE VIEW connections AS
+    SELECT datetime, remote, reverse
+    FROM connlog AS c
+        LEFT JOIN rlookup AS r
+        ON c.remote=r.ip;`
 
 	if _, err := db.Exec(stmt); err != nil {
 		return err
@@ -320,15 +326,31 @@ func migrate(d *sql.DB) error {
 		if _, err = tx.Exec(stmt); err != nil {
 			return err
 		}
+		if _, err = tx.Exec(`UPDATE admin SET value=? WHERE key LIKE 'version'`, "2"); err != nil {
+			return err
+		}
+		if err = tx.Commit(); err != nil {
+			return err
+		}
+		log.Info.Println("Database upgraded to version 2.")
+		fallthrough
+	case "2":
+		tx, err := d.Begin()
+		if err != nil {
+			return err
+		}
+		if _, err = tx.Exec(`CREATE INDEX HistoryDatetimeIdx ON history(datetime)`); err != nil {
+			return err
+		}
 		if _, err = tx.Exec(`UPDATE admin SET value=? WHERE key LIKE 'version'`, VERSION); err != nil {
 			return err
 		}
 		if err = tx.Commit(); err != nil {
 			return err
 		}
-		log.Info.Println("Database upgraded to latest version.")
+		log.Info.Println("Database upgraded to latest version (2.1).")
 		return nil
-	case "2":
+	case "2.1":
 		log.Debug.Println("Database on latest version.")
 	}
 
